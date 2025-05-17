@@ -94,14 +94,14 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ####### load object motion ######
         obj_dict = {}
-        self.ref_obj_motion_data = joblib.load("/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/25513_omomo_g1_29dof_with_handobj_bigbox.pkl")
+        self.ref_obj_motion_data = joblib.load("/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_handobj_bigbox.pkl")
         obj_dict["obj_pos"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_trans_offset"])  #(N,128,3)
         obj_dict["obj_rot"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_rot"])
         obj_dict["obj_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_lin_vel"])
         obj_dict["obj_ang_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_ang_vel"])
         self.ref_target_root_state = torch.cat((obj_dict["obj_pos"],obj_dict["obj_rot"],obj_dict["obj_vel"],obj_dict["obj_ang_vel"]), dim=-1) # (128,13)
         self.ref_target_root_state = self.ref_target_root_state.unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device) # (N，128,13)
-        self.ref_target_root_state[:,:,0:3] = self.ref_target_root_state[:,:,0:3] + self.env_origins.unsqueeze(1).repeat(1, 128, 1)  # (N,128，3)
+        #self.ref_target_root_state[:,:,0:3] = self.ref_target_root_state[:,:,0:3] + self.env_origins.unsqueeze(1).repeat(1, 128, 1)  # (N,128，3)
 
         # res = self._motion_lib.get_motion_state(self.motion_ids, self.motion_times, offset=self.env_origins)
         res = self._resample_motion_times(torch.arange(self.num_envs))
