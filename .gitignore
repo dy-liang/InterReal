@@ -40,9 +40,9 @@ wandb/
 *.egg-info
 __pycache__
 
-roboverse/data/motions
-*.pkl
-*.pt
+#roboverse/data/motions
+#*.pkl
+#*.pt
 
 *.TXT
 
@@ -51,12 +51,12 @@ sim2real/models/dec_loco/*.onnx
 
 roboverse/data/smpl
 data/shape
-data/motions
+#data/motions
 roboverse/data/Recorded/
 roboverse/data/AMASS/
 AMASS/*
 
-*.sh
+#*.sh
 *.txt
 
 eval_g129dof_checkpoints
