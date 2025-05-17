@@ -10,8 +10,10 @@ from isaac_utils.rotations import (
     quat_mul,
     quat_rotate_inverse,
     xyzw_to_wxyz,
-    wxyz_to_xyzw
+    wxyz_to_xyzw,
+    slerp
 )
+
 # from isaacgym import gymtorch, gymapi, gymutil
 from humanoidverse.envs.env_utils.visualization import Point
 
@@ -238,17 +240,28 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._motion_lib.load_motions(random_sample=True)
         self.reset_envs_idx(torch.arange(self.num_envs, device=self.device))
 
+    def _calc_frame_blend(self, time, len, num_frames, dt):
+        time = time.clone()
+        phase = time / len
+        phase = torch.clip(phase, 0.0, 1.0)  # clip time to be within motion length.
+        time[time < 0] = 0
+
+        frame_idx0 = (phase * (num_frames - 1)).long()
+        frame_idx1 = torch.min(frame_idx0 + 1, num_frames - 1)
+        blend = torch.clip((time - frame_idx0 * dt) / dt, 0.0, 1.0) # clip blend to be within 0 and 1
+        
+        return frame_idx0, frame_idx1, blend
 
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
         
         offset = self.env_origins
         B = self.motion_ids.shape[0]
-        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1
+        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 #DY: dt use 0.02, while motion use 0.0333
         # motion_res = self._get_state_from_motionlib_cache_trimesh(self.motion_ids, motion_times, offset= offset)
 
         ## current robot reference data ##
-        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+        motion_res, frame_idx0, frame_idx1, blend = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
         ref_body_pos_extend = motion_res["rg_pos_t"]
         self.ref_body_pos_extend[:] = ref_body_pos_extend # for visualization and analysis
         ref_body_vel_extend = motion_res["body_vel_t"] # [num_envs, num_markers, 3]
@@ -258,12 +271,16 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ref_joint_vel = motion_res["dof_vel"] # [num_envs, num_dofs]
 
         ## current target reference data ##
-        motion_frames = torch.clip((motion_times* 30).round().int(), 0, 127) #[ 23, 106,  15,  86]
-        ref_target_root_state = self.ref_target_root_state[torch.arange(self.num_envs),motion_frames[torch.arange(self.num_envs)],:]  ## (N, 13)
-        self.cur_tar_root_pos = ref_target_root_state[:,:3] # Env,3
-        self.cur_tar_root_rot = ref_target_root_state[:,3:7]
-        self.cur_tar_root_vel = ref_target_root_state[:,7:10]
-        self.cur_tar_root_ang_vel = ref_target_root_state[:,10:13]
+        #motion_frames = torch.clip((motion_times* 30).round().int(), 0, 127) #[ 23, 106,  15,  86]
+
+        self.cur_tar_root_pos = self.ref_target_root_state[:,:,:3] # Env,Len, 3
+        self.cur_tar_root_rot = self.ref_target_root_state[:,:,3:7]
+        self.cur_tar_root_vel = self.ref_target_root_state[:,:,7:10]
+        self.cur_tar_root_ang_vel = self.ref_target_root_state[:,:,10:13]
+        self.cur_tar_root_pos = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3]
+        self.cur_tar_root_rot = slerp(self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,3:7], self.ref_target_root_state[torch.arange(self.num_envs),frame_idx1,3:7], blend)
+        self.cur_tar_root_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10]
+        self.cur_tar_root_ang_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13]
 
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
@@ -424,7 +441,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         if self.custom_origins: # trimesh
             motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
             offset = self.env_origins
-            motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+            motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
             self.simulator.robot_root_states[env_ids, :3] = motion_res['root_pos'][env_ids]
             # self.robot_root_states[env_ids, 2] += 0.04 # in case under the terrain
             if self.config.simulator.config.name == 'isaacgym':
@@ -440,10 +457,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         else:
             motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1  #[256]
-            motion_frames = (motion_times* 30).round().int()
+            motion_frames = (motion_times* 30.).round().int()
             #print(motion_frames)
             offset = self.env_origins
-            motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
+            motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
 
             #motion_frames = self.episode_length_buf + (self.motion_start_times * 30.).int()
             ref_target_root_state = self.ref_target_root_state[env_ids,motion_frames[env_ids],:]  ## (N, 13)
@@ -511,7 +528,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
         offset = self.env_origins
-        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+        motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
 
         dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
         dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
