@@ -260,6 +260,11 @@ class IsaacGym(BaseSimulator):
         self.envs = []
         self.robot_handles = []
         self._target_handles = []
+        
+        self.num_humanoid_bodies = self.gym.get_asset_rigid_body_count(self.robot_asset)
+        self.num_humanoid_shapes = self.gym.get_asset_rigid_shape_count(self.robot_asset)
+        max_agg_bodies = self.num_humanoid_bodies + 2
+        max_agg_shapes = self.num_humanoid_shapes + 65
         with Progress() as progress:
             task = progress.add_task(
                 f"Creating {self.num_envs} environments...", total=self.num_envs
@@ -267,9 +272,11 @@ class IsaacGym(BaseSimulator):
             for i in range(self.num_envs):
                 # create env instance
                 env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
+                self.gym.begin_aggregate(env_handle, max_agg_bodies, max_agg_shapes, True)
+
                 self._build_each_env(i, env_handle)
                 self._build_target(i, env_handle)
-
+                self.gym.end_aggregate(env_handle)
                 progress.update(task, advance=1)
 
         return self.envs, self.robot_handles
