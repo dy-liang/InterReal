@@ -190,7 +190,7 @@ class LeggedRobotBase(BaseTask):
 
     def set_is_evaluating(self):
         logger.info("Setting Env is evaluating")
-        self.is_evaluating = False # True
+        self.is_evaluating = True
     
     def step(self, actor_state):
         """ Apply actions, simulate, call self.post_physics_step()
