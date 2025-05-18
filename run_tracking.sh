@@ -8,7 +8,7 @@ python humanoidverse/train_agent.py \
 +robot=g1/g1_29dof_with_hand \
 +terrain=terrain_locomotion_plane \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
-num_envs=3 \
+num_envs=4096 \
 project_name=MotionTracking \
 experiment_name=MotionTracking_CR7 \
 robot.motion.motion_file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_hand.pkl" \

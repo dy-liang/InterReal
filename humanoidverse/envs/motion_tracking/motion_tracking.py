@@ -224,11 +224,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         if len(env_ids) == 0:
             return
         self.motion_len[env_ids] = self._motion_lib.get_motion_length(self.motion_ids[env_ids])
-        # if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
-        #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
-        # else:
-        self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-        #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+        if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+        else:
+            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
         # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         # offset = self.env_origins
@@ -239,18 +239,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     def resample_motion(self):
         self._motion_lib.load_motions(random_sample=True)
         self.reset_envs_idx(torch.arange(self.num_envs, device=self.device))
-
-    def _calc_frame_blend(self, time, len, num_frames, dt):
-        time = time.clone()
-        phase = time / len
-        phase = torch.clip(phase, 0.0, 1.0)  # clip time to be within motion length.
-        time[time < 0] = 0
-
-        frame_idx0 = (phase * (num_frames - 1)).long()
-        frame_idx1 = torch.min(frame_idx0 + 1, num_frames - 1)
-        blend = torch.clip((time - frame_idx0 * dt) / dt, 0.0, 1.0) # clip blend to be within 0 and 1
-        
-        return frame_idx0, frame_idx1, blend
 
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
