@@ -288,7 +288,7 @@ class IsaacGym(BaseSimulator):
         # pos[:2] += torch_rand_float(-1., 1., (2, 1), device=str(self.device)).squeeze(1) 
         # start_pose.p = gymapi.Vec3(*pos)
 
-        char_h = 0.89
+        char_h = 0.8
         start_pose.p = gymapi.Vec3(*get_axis_params(char_h, 2))
         start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 

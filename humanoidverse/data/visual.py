@@ -2,7 +2,7 @@ import pickle
 import  joblib
 #file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_29dof_anneal_23dof/TairanTestbed/singles/0-TairanTestbed_TairanTestbed_CR7_video_CR7_level1_filter_amass.pkl"
 #file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/25513_omomo_g1_29dof_with_hand.pkl"
-file = "/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_handobj_bigbox.pkl"
+file = "/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_hand.pkl"
 data = joblib.load(file)
 #print(data)
 data = data["motion0"] 

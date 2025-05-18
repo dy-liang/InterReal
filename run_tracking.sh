@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python humanoidverse/train_agent.py \
 +simulator=isaacgym \
@@ -10,8 +10,8 @@ python humanoidverse/train_agent.py \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
 num_envs=4096 \
 project_name=MotionTracking \
-experiment_name=MotionTracking_CR7 \
-robot.motion.motion_file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_hand.pkl" \
+experiment_name=Start_NewURDF_OriginEP_43Dof \
+robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_hand.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \

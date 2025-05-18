@@ -96,7 +96,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ####### load object motion ######
         obj_dict = {}
-        self.ref_obj_motion_data = joblib.load("/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_handobj_bigbox.pkl")
+        self.ref_obj_motion_data = joblib.load("humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_handobj_bigbox.pkl")
         obj_dict["obj_pos"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_trans_offset"])  #(N,128,3)
         obj_dict["obj_rot"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_rot"])
         obj_dict["obj_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_lin_vel"])
@@ -226,9 +226,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.motion_len[env_ids] = self._motion_lib.get_motion_length(self.motion_ids[env_ids])
         if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
-            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
         # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         # offset = self.env_origins
@@ -242,7 +243,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
-        
         offset = self.env_origins
         B = self.motion_ids.shape[0]
         motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 #DY: dt use 0.02, while motion use 0.0333
