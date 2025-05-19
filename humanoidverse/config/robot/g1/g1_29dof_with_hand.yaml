@@ -20,6 +20,9 @@ robot:
 
   key_bodies: ["left_ankle_roll_link", "right_ankle_roll_link"]
   contact_bodies: [ "left_ankle_roll_link", "right_ankle_roll_link" ]
+  contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'mid360_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
+  left_hand_name: ["left_wrist_yaw_link", "left_hand_index_1_link", "left_hand_middle_1_link", "left_hand_thumb_2_link"]
+  right_hand_name: ["right_wrist_yaw_link", "right_hand_index_1_link", "right_hand_middle_1_link", "right_hand_thumb_2_link"]
   num_feet: 2
   right_foot_name: "right_ankle_roll_link"
   left_foot_name: "left_ankle_roll_link"
@@ -436,10 +439,30 @@ robot:
       - [0.929, 0.867, 0.437] # left_shoulder_roll_joint
       - [0.929, 0.867, 0.437] # left_shoulder_yaw_joint
       - [0.929, 0.867, 0.437] # left_elbow_joint
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
       - [0.929, 0.867, 0.437] # right_shoulder_pitch_joint
       - [0.929, 0.867, 0.437] # right_shoulder_roll_joint
       - [0.929, 0.867, 0.437] # right_shoulder_yaw_joint
       - [0.929, 0.867, 0.437] # right_elbow_joint
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
+      - [0.929, 0.867, 0.437]
       - [0, 0.351, 0.613] # left_elbow_joint_extend
       - [0, 0.351, 0.613] # right_elbow_joint_extend
       - [0, 0.351, 0.613] # head_link

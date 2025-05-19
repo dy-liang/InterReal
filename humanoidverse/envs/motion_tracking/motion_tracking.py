@@ -96,13 +96,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ####### load object motion ######
         obj_dict = {}
-        self.ref_obj_motion_data = joblib.load("humanoidverse/data/motions/g1_43dof/250517_omomo_g1_29dof_with_handobj_bigbox.pkl")
+        self.ref_obj_motion_data = joblib.load("humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_forceobj_bigbox.pkl")
         obj_dict["obj_pos"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_trans_offset"])  #(N,128,3)
         obj_dict["obj_rot"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_rot"])
         obj_dict["obj_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_lin_vel"])
         obj_dict["obj_ang_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_ang_vel"])
+        obj_dict["body_contact"] = torch.tensor(self.ref_obj_motion_data["motion0"]["body_contact"]) 
         self.ref_target_root_state = torch.cat((obj_dict["obj_pos"],obj_dict["obj_rot"],obj_dict["obj_vel"],obj_dict["obj_ang_vel"]), dim=-1) # (128,13)
         self.ref_target_root_state = self.ref_target_root_state.unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device) # (N，128,13)
+        self.ref_body_key_contact = torch.tensor(obj_dict["body_contact"]).unsqueeze(0).repeat(self.num_envs, 1, 1, 1).to(self.device)  # (N，128,20, 3)
         #self.ref_target_root_state[:,:,0:3] = self.ref_target_root_state[:,:,0:3] + self.env_origins.unsqueeze(1).repeat(1, 128, 1)  # (N,128，3)
 
         # res = self._motion_lib.get_motion_state(self.motion_ids, self.motion_times, offset=self.env_origins)
@@ -228,8 +230,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
-            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
         # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         # offset = self.env_origins
@@ -260,15 +262,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ## current target reference data ##
         #motion_frames = torch.clip((motion_times* 30).round().int(), 0, 127) #[ 23, 106,  15,  86]
-
-        self.cur_tar_root_pos = self.ref_target_root_state[:,:,:3] # Env,Len, 3
-        self.cur_tar_root_rot = self.ref_target_root_state[:,:,3:7]
-        self.cur_tar_root_vel = self.ref_target_root_state[:,:,7:10]
-        self.cur_tar_root_ang_vel = self.ref_target_root_state[:,:,10:13]
         self.cur_tar_root_pos = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3]
         self.cur_tar_root_rot = slerp(self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,3:7], self.ref_target_root_state[torch.arange(self.num_envs),frame_idx1,3:7], blend)
         self.cur_tar_root_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10]
         self.cur_tar_root_ang_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13]
+        self.cur_body_key_contact = (1.0 - blend.unsqueeze(-1)) * self.ref_body_key_contact[torch.arange(self.num_envs),frame_idx0,:,:] + blend.unsqueeze(-1) * self.ref_body_key_contact[torch.arange(self.num_envs),frame_idx0,:,:]
 
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
@@ -692,6 +690,62 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         r_joint_vel = torch.exp(-diff_joint_vel_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_vel)
         return r_joint_vel
     
+    def _reward_hand_contact(self):
+        contact_thres = 0.1
+        ref_contact_hand = torch.any(torch.abs(self.cur_body_key_contact) > 0.1, dim=-1).float() # Env,20
+        contact_hand = torch.any(torch.abs(self.simulator.contact_forces) > 0.1, dim=-1).float()[:,self.contact_Bodies_indices] # Env,20
+        left_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
+                            if "left_wrist_yaw_link" in self.contact_Bodies[i] or
+                            "left_hand_index_1_link" in self.contact_Bodies[i] or 
+                            "left_hand_middle_1_link" in self.contact_Bodies[i] or
+                            "left_hand_thumb_2_link" in self.contact_Bodies[i]]
+        ref_left_contact_hand = ref_contact_hand[:,left_contact_hand_ids]  # Env,Len,3
+        ref_left_contact_hand_any = torch.any(ref_left_contact_hand > contact_thres, dim=-1).float()
+        left_hand_contact = contact_hand[:,left_contact_hand_ids].clone()
+        left_hand_contact_any = torch.any(left_hand_contact > contact_thres, dim=-1, keepdim=True).float()
+
+        ecg_left = (((ref_left_contact_hand > contact_thres) * torch.abs(left_hand_contact - ref_left_contact_hand)).sum(dim=-1))
+        rcg_left = 0.5 * (1 + torch.exp(-ecg_left*0.5)) * (ref_left_contact_hand_any) + (1 - ref_left_contact_hand_any)
+
+        right_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
+                                 if "right_wrist_yaw_link" in self.contact_Bodies[i] or
+                                 "right_hand_index_1_link" in self.contact_Bodies[i] or 
+                                 "right_hand_middle_1_link" in self.contact_Bodies[i] or
+                                 "right_hand_thumb_2_link" in self.contact_Bodies[i]]
+        
+        ref_right_contact_hand = ref_contact_hand[:,right_contact_hand_ids] 
+        ref_right_contact_hand_any = torch.any(ref_right_contact_hand > contact_thres, dim=-1).float()
+        right_hand_contact = contact_hand[:,right_contact_hand_ids].clone()
+        right_hand_contact_any = torch.any(right_hand_contact > contact_thres, dim=-1, keepdim=True).float()
+
+        contact_reset = torch.cat([ 
+                                torch.abs(ref_left_contact_hand_any.unsqueeze(-1) - left_hand_contact_any) * ref_left_contact_hand_any.unsqueeze(-1), 
+                                torch.abs(ref_right_contact_hand_any.unsqueeze(-1) - right_hand_contact_any) * ref_right_contact_hand_any.unsqueeze(-1),
+                                ], dim=-1)
+        
+        ecg_right = (((ref_right_contact_hand > contact_thres) * torch.abs(right_hand_contact - ref_right_contact_hand)).sum(dim=-1))
+        rcg_right = 0.5 * (1 + torch.exp(-ecg_right*0.5)) * (ref_right_contact_hand_any) + (1 - ref_right_contact_hand_any)
+        
+        rcg_hand = rcg_left + rcg_right
+
+        other_ids = [i for i in range(len(self.contact_Bodies)) if i not in left_contact_hand_ids and i not in right_contact_hand_ids]
+        ref_other_contact = ref_contact_hand[:, other_ids]
+        other_contact = contact_hand[:, other_ids]
+        ecg_other = ((torch.abs(other_contact - ref_other_contact) * (ref_other_contact > contact_thres))).mean(dim=-1)
+        rcg_other = torch.exp(-ecg_other*0.5)
+        
+        no_contact = torch.abs(contact_hand) < contact_thres
+        # print(no_contact, ref_all_contact)
+        ecg_all = (torch.abs(no_contact + ref_contact_hand) * (ref_contact_hand < -contact_thres)).mean(dim=-1)
+        rcg_all = torch.exp(-ecg_all*0.3)
+
+        contact_all = self.simulator.contact_forces.clone().abs().sum(dim=-1).sum(dim=-1)
+        contact_energy = contact_all.pow(2).mul(-0.000000005).exp()
+
+        rcg = rcg_hand + rcg_other + rcg_all  + contact_energy
+        return rcg #, contact_reset
+
+
     def setup_visualize_entities(self):
         if self.debug_viz and self.config.simulator.config.name == "genesis":
             num_visualize_markers = len(self.config.robot.motion.visualization.marker_joint_colors)
