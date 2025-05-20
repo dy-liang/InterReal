@@ -25,6 +25,10 @@ class IsaacGym(BaseSimulator):
         self.visualize_viewer = False
         self.object_density = 25.
         self.object_name = ["largebox"]
+        object_name_set = sorted(list(set(self.object_name)))
+        self.object_id = to_torch([object_name_set.index(name) for name in self.object_name], dtype=torch.long).cuda()
+        self.obj2motion = torch.stack([self.object_id == k for k in range(len(object_name_set))], dim=0)
+
         self.asset_obj_root =  "humanoidverse/data/objects/" #self.robot_config.asset.asset_obj_root
         self.ball_size = 1.0 #cfg['env']['ballSize']
         if config.save_rendering_dir is not None:

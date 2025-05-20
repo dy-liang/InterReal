@@ -186,7 +186,7 @@ class BaseTask():
         right_hand_names = self.config.robot.right_hand_name #[s for s in self.body_names if self.config.robot.right_hand_name in s]
         left_hand_names = self.config.robot.left_hand_name #[s for s in self.body_names if self.config.robot.left_hand_name in s] 
         self.contact_Bodies = self.config.robot.contact_Bodies #[s for s in self.body_names if self.config.robot.contact_Bodies in s]
-
+        self.key_Bodies = self.config.robot.key_Bodies
         penalized_contact_names = []
         for name in self.config.robot.penalize_contacts_on:
             penalized_contact_names.extend([s for s in self.body_names if name in s])
@@ -213,7 +213,12 @@ class BaseTask():
         self.contact_Bodies_indices = torch.zeros(len(self.contact_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(self.contact_Bodies)):
             self.contact_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.contact_Bodies[i])
+        print(self.contact_Bodies_indices)
 
+        self.key_Bodies_indices = torch.zeros(len(self.key_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(self.key_Bodies)):
+            self.key_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.key_Bodies[i])
+        print(self.key_Bodies_indices)
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
             self.penalised_contact_indices[i] = self.simulator.find_rigid_body_indice(penalized_contact_names[i])

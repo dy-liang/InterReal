@@ -889,6 +889,38 @@ class LeggedRobotBase(BaseTask):
     def _get_obs_tar_rot(self,):
         return self.simulator.tar_root_states[:, 3:7]
     
+    def _get_obs_key_robot_contact(self,):
+        return torch.any(torch.abs(self.simulator.contact_forces) > 0.1, dim=-1).float()[:,self.contact_Bodies_indices] # Env,19
+
+    def _get_obs_ig(self,):
+        L = len(self.key_Bodies_indices)
+        object_points = self.simulator.object_points[self.simulator.object_id[self.data_id]]
+        object_points_extend = object_points.view(-1, 3)
+
+        obj_rot_extend = self.simulator.tar_root_states[:, 3:7].unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        obj_points = quat_rotate(obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.simulator.tar_root_states[:, :3].unsqueeze(1)
+        ig = compute_sdf(self.simulator._rigid_body_pos, obj_points).view(-1, 3) # body_pos-torch.Size([256, 19, 3])
+        heading_rot = calc_heading_quat_inv(self.simulator.robot_root_states[:, 3:7])
+        heading_rot_extend = heading_rot.unsqueeze(1).repeat(1, self.simulator._rigid_body_pos.shape[1], 1).view(-1, 4)
+        ig = quat_rotate(heading_rot_extend, ig).view(self.num_envs, -1, 3)     #[256, 59, 3]
+
+        ig_norm = ig.norm(dim=-1, keepdim=True)
+        ig_all = ig / (ig_norm + 1e-6) * (-5 * ig_norm).exp()
+        ig = ig_all[:,self.key_Bodies_indices,:].view(self.num_envs, -1)
+        ig_all = ig_all.view(self.num_envs, -1)                   # Env, 44*3
+
+        ref_obj_rot_extend = self.cur_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        ref_obj_points = quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.cur_tar_root_pos.unsqueeze(1)
+        ref_ig = compute_sdf(self.ref_body_pos_extend[:,self.key_Bodies_indices], ref_obj_points).view(-1, 3) # body_pos-torch.Size([256, 19, 3])
+        ref_heading_rot = calc_heading_quat_inv(self.ref_robot_root_rot)
+        ref_heading_rot_extend = ref_heading_rot.unsqueeze(1).repeat(1, L, 1).view(-1, 4)
+        ref_ig = quat_rotate(ref_heading_rot_extend, ref_ig).view(self.num_envs, -1, 3)     #[256, 19, 3]
+
+        ref_ig_norm = ref_ig.norm(dim=-1, keepdim=True)
+        ref_ig = ref_ig / (ref_ig_norm + 1e-6) * (-5 * ref_ig_norm).exp()  
+        ref_ig = ref_ig.view(self.num_envs, -1)
+        return torch.cat((ig_all,ref_ig-ig),dim=-1)
+    
     def _get_obs_history(self,):
         assert "history" in self.config.obs.obs_auxiliary.keys()
         history_config = self.config.obs.obs_auxiliary['history']
@@ -927,3 +959,13 @@ class LeggedRobotBase(BaseTask):
     
     def _get_obs_actions(self,):
         return self.actions
+
+@torch.jit.script
+def compute_sdf(points1, points2):
+    # type: (Tensor, Tensor) -> Tensor
+    dis_mat = points1.unsqueeze(2) - points2.unsqueeze(1)
+    dis_mat_lengths = torch.norm(dis_mat, dim=-1)
+    min_length_indices = torch.argmin(dis_mat_lengths, dim=-1)
+    B_indices, N_indices = torch.meshgrid(torch.arange(points1.shape[0]), torch.arange(points1.shape[1]), indexing='ij')
+    min_dis_mat = dis_mat[B_indices, N_indices, min_length_indices].contiguous()
+    return min_dis_mat

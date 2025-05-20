@@ -19,10 +19,12 @@ robot:
   # self_obs_max_coords: 298  # ${eval:1+20*(3+6+3+3)-3}
 
   key_bodies: ["left_ankle_roll_link", "right_ankle_roll_link"]
+  key_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
   contact_bodies: [ "left_ankle_roll_link", "right_ankle_roll_link" ]
-  contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'mid360_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
+  contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
   left_hand_name: ["left_wrist_yaw_link", "left_hand_index_1_link", "left_hand_middle_1_link", "left_hand_thumb_2_link"]
   right_hand_name: ["right_wrist_yaw_link", "right_hand_index_1_link", "right_hand_middle_1_link", "right_hand_thumb_2_link"]
+
   num_feet: 2
   right_foot_name: "right_ankle_roll_link"
   left_foot_name: "left_ankle_roll_link"
@@ -179,7 +181,7 @@ robot:
       shoulder_yaw: 20
       elbow: 60
 
-      wrist_roll: 40
+      wrist_roll: 20
       wrist_pitch: 10
       wrist_yaw: 10
       hand_index_0: 3
@@ -205,7 +207,7 @@ robot:
       shoulder_yaw: 0.4
       elbow: 1.0
 
-      wrist_roll: 0.8
+      wrist_roll: 0.5
       wrist_pitch: 0.1
       wrist_yaw: 0.1
       hand_index_0: 0.03
@@ -245,7 +247,8 @@ robot:
     fix_base_link: False # TEST: fix base link to world
 
   motion:
-    motion_file : 'humanoidverse/data/motions/g1_29dof_anneal_23dof/v1/amass_all.pkl'
+    motion_file : 'humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_force.pkl'
+    objMotionPah: "humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_forceobj_bigbox.pkl"
     # motion_file : 'humanoidverse/data/motions/g1_29dof/v1/singles/0-ACCAD_Male2General_c3d_A6- Box lift_poses.pkl'
     asset:
       assetRoot: "humanoidverse/data/robots/g1/"
