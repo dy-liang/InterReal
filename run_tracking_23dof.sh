@@ -11,7 +11,7 @@ python humanoidverse/train_agent.py \
 num_envs=4096 \
 project_name=MotionTracking \
 experiment_name=Start_MultiTask_OriginEP_23Dof_TrackID_bigPD_TrackElbowShoulder \
-robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250523_HOIs_4task_4000_43dof.pkl" \
+robot.motion.motion_file="humanoidverse/data/motions/g1_23dof/250523_HOIs_4task_4000_23dof.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \

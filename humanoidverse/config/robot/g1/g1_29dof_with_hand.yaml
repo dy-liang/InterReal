@@ -125,10 +125,10 @@ robot:
       waist_yaw_joint : 0.
       waist_roll_joint : 0.
       waist_pitch_joint : 0.
-      left_shoulder_pitch_joint: 0.2
-      left_shoulder_roll_joint: 0.2
+      left_shoulder_pitch_joint: 0.
+      left_shoulder_roll_joint: 0.
       left_shoulder_yaw_joint: 0.
-      left_elbow_joint: 0.9
+      left_elbow_joint: 0.
 
       left_wrist_roll_joint: 0.
       left_wrist_pitch_joint: 0.
@@ -141,10 +141,10 @@ robot:
       left_hand_thumb_1_joint: 0.
       left_hand_thumb_2_joint: 0.
 
-      right_shoulder_pitch_joint: 0.2
-      right_shoulder_roll_joint: -0.2
+      right_shoulder_pitch_joint: 0.
+      right_shoulder_roll_joint: 0.
       right_shoulder_yaw_joint: 0.
-      right_elbow_joint: 0.9
+      right_elbow_joint: 0.
 
       right_wrist_roll_joint: 0.
       right_wrist_pitch_joint: 0.
