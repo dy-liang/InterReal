@@ -602,10 +602,10 @@ class LeggedRobotBase(BaseTask):
             push_pos_list = [push_pos]
             push_mag_list = [1]
             push_color_schems = [(0.851, 0.144, 0.07)]
-            push_line_widths = [0.03]
+            push_line_widths = [0.01]
             for push_vel, push_pos, push_mag, push_color, push_line_width in zip(push_vel_list, push_pos_list, push_mag_list, push_color_schems, push_line_widths):
-                for _ in range(200):
-                    gymutil.draw_line(Point(push_pos +torch.rand(3, device=self.device) * push_line_width),
+                for _ in range(30):
+                    gymutil.draw_line(Point(push_pos +torch.rand(1, device=self.device) * push_line_width),
                                         Point(push_pos + push_vel * push_mag),
                                         Point(push_color),
                                         self.gym, self.viewer, self.envs[env_id])

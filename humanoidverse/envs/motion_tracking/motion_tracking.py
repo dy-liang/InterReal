@@ -244,7 +244,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         super()._pre_compute_observations_callback()
         offset = self.env_origins
         B = self.motion_ids.shape[0]
-        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 #DY: dt use 0.02, while motion use 0.0333
+        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 
         # motion_res = self._get_state_from_motionlib_cache_trimesh(self.motion_ids, motion_times, offset= offset)
 
         ## current robot reference data ##
@@ -408,13 +408,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
                     color_inner = tuple(color_inner)
 
                     # import ipdb; ipdb.set_trace()
-                    self.simulator.draw_sphere(pos_joint, 0.04, color_inner, env_id, pos_id)
+                    self.simulator.draw_sphere(pos_joint, 0.02, color_inner, env_id, pos_id)
 
 
             else:
                 # draw teleop joints
                 for pos_id, pos_joint in enumerate(self.teleop_marker_coords[env_id]):
-                    self.simulator.draw_sphere(pos_joint, 0.04, (0.851, 0.144, 0.07), env_id, pos_id)
+                    self.simulator.draw_sphere(pos_joint, 0.02, (0.851, 0.144, 0.07), env_id, pos_id)
 
     def _reset_root_states(self, env_ids):
         # reset root states according to the reference motion
@@ -444,8 +444,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         else:
             motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1  #[256]
-            motion_frames = (motion_times* 30.).round().int()
-            #print(motion_frames)
             offset = self.env_origins
             motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
 
@@ -463,10 +461,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_vel = motion_res['root_vel'][env_ids]
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
-            self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
-            #print("reset_before", self.simulator.all_root_states.view(self.num_envs, 2, 13)[2, 1, :3])
             self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
-            #self.simulator.tar_root_states[env_ids, :3] = target_root_pos + torch.randn_like(target_root_pos) * root_pos_noise
+            self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)
                 self.simulator.tar_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(ref_tar_root_rot.shape[0], root_rot_noise), ref_tar_root_rot, w_last=True)
