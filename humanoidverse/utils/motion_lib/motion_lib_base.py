@@ -117,12 +117,13 @@ class MotionLibBase():
         num_frames = self._motion_num_frames[motion_ids]
         dt = self._motion_dt[motion_ids]
 
-        frame_idx0, frame_idx1, blend = self._calc_frame_blend(motion_times, motion_len, num_frames, dt)
+        frame_idx0, frame_idx1, blend = self._calc_frame_blend(motion_times, motion_len, num_frames, dt) #[2]
+        #print(frame_idx0)
+
         f0l = frame_idx0 + self.length_starts[motion_ids]
         f1l = frame_idx1 + self.length_starts[motion_ids]
-
         if "dof_pos" in self.__dict__:
-            local_rot0 = self.dof_pos[f0l]
+            local_rot0 = self.dof_pos[f0l] # N*L,43
             local_rot1 = self.dof_pos[f1l]
         else:
             local_rot0 = self.lrs[f0l]
@@ -196,7 +197,7 @@ class MotionLibBase():
         
         if flags.real_traj:
             q_body_ang_vel0, q_body_ang_vel1 = self.q_gavs[f0l], self.q_gavs[f1l]
-            q_rb_rot0, q_rb_rot1 = self.q_grs[f0l], self.q_grs[f1l]
+            q_rb_rot0, q_rb_rot1 = self.q_grs[f0l], self.q_grs[f1l] # Env, F
             q_rg_pos0, q_rg_pos1 = self.q_gts[f0l, :], self.q_gts[f1l, :]
             q_body_vel0, q_body_vel1 = self.q_gvs[f0l], self.q_gvs[f1l]
 
@@ -228,7 +229,7 @@ class MotionLibBase():
             "body_vel_t": body_vel_t,
             "body_ang_vel_t": body_ang_vel_t,
         })
-        return return_dict
+        return return_dict, frame_idx0, frame_idx1, blend
     
     def load_motions(self, 
                      random_sample=True, 

@@ -111,7 +111,7 @@ class PPO(BaseAlgo):
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate)
 
     def _setup_storage(self):
-        self.storage = RolloutStorage(self.env.num_envs, self.num_steps_per_env)
+        self.storage = RolloutStorage(self.env.num_envs, self.num_steps_per_env, self.device)
         ## Register obs keys
         for obs_key, obs_dim in self.algo_obs_dim_dict.items():
             self.storage.register_key(obs_key, shape=(obs_dim,), dtype=torch.float)

@@ -12,6 +12,7 @@ import torch
 import numpy as np
 
 
+
 def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
     return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
 
@@ -219,3 +220,21 @@ def unscale(x, lower, upper):
 
 def unscale_np(x, lower, upper):
     return (2.0 * x - upper - lower) / (upper - lower)
+
+@torch.jit.script
+def calc_heading(q):
+    ref_dir = torch.zeros_like(q[..., 0:3])
+    ref_dir[..., 0] = 1
+    rot_dir = quat_rotate(q, ref_dir)
+
+    heading = torch.atan2(rot_dir[..., 1], rot_dir[..., 0])
+    return heading
+
+@torch.jit.script
+def calc_heading_quat_inv(q):
+    heading = calc_heading(q)
+    axis = torch.zeros_like(q[..., 0:3])
+    axis[..., 2] = 1
+
+    heading_q = quat_from_angle_axis(-heading, axis)
+    return heading_q

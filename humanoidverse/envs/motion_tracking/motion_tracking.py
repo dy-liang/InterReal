@@ -10,14 +10,16 @@ from isaac_utils.rotations import (
     quat_mul,
     quat_rotate_inverse,
     xyzw_to_wxyz,
-    wxyz_to_xyzw
+    wxyz_to_xyzw,
+    slerp
 )
+from isaacgym import torch_utils
 # from isaacgym import gymtorch, gymapi, gymutil
 from humanoidverse.envs.env_utils.visualization import Point
 
 from humanoidverse.utils.motion_lib.skeleton import SkeletonTree
 
-from humanoidverse.utils.motion_lib.motion_lib_robot import MotionLibRobot
+from humanoidverse.utils.motion_lib.hoi_motion_lib_base import MotionLibHoi
 
 from termcolor import colored
 from loguru import logger
@@ -34,7 +36,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._init_motion_lib()
         self._init_motion_extend()
         self._init_tracking_config()
-
+        self._init_adaptive_sigma()
         self.init_done = True
         self.debug_viz = True
 
@@ -86,28 +88,17 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
     def _init_motion_lib(self):
         self.config.robot.motion.step_dt = self.dt
-        self._motion_lib = MotionLibRobot(self.config.robot.motion, num_envs=self.num_envs, device=self.device)
+        self._motion_lib = MotionLibHoi(self.config.robot.motion, num_envs=self.num_envs, device=self.device)
         if self.is_evaluating:
             self._motion_lib.load_motions(random_sample=False)
         else:
-            self._motion_lib.load_motions(random_sample=True)
+            self._motion_lib.load_motions(random_sample=False)
 
-        ####### load object motion ######
-        obj_dict = {}
-        self.ref_obj_motion_data = joblib.load("/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_43dof/25513_omomo_g1_29dof_with_handobj_bigbox.pkl")
-        obj_dict["obj_pos"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_trans_offset"])  #(N,128,3)
-        obj_dict["obj_rot"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_rot"])
-        obj_dict["obj_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_lin_vel"])
-        obj_dict["obj_ang_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_ang_vel"])
-        self.ref_target_root_state = torch.cat((obj_dict["obj_pos"],obj_dict["obj_rot"],obj_dict["obj_vel"],obj_dict["obj_ang_vel"]), dim=-1) # (128,13)
-        self.ref_target_root_state = self.ref_target_root_state.unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device) # (N，128,13)
-        #self.ref_target_root_state[:,:,0:3] = self.ref_target_root_state[:,:,0:3] + self.env_origins.unsqueeze(1).repeat(1, 128, 1)  # (N,128，3)
-
-        # res = self._motion_lib.get_motion_state(self.motion_ids, self.motion_times, offset=self.env_origins)
         res = self._resample_motion_times(torch.arange(self.num_envs))
         self.motion_dt = self._motion_lib._motion_dt
         self.motion_start_idx = 0
         self.num_motions = self._motion_lib._num_unique_motions
+        self.data_id = torch_utils.to_torch([torch.where(self.simulator.obj2motion[i % len(self.simulator.object_name)] == 1)[0][torch.randint(self.simulator.obj2motion[i % len(self.simulator.object_name)].sum(), ())] for i in range(self.num_envs)], device=self.device, dtype=torch.long)
 
     def _init_tracking_config(self):
         if "motion_tracking_link" in self.config.robot.motion:
@@ -144,6 +135,16 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             
             self.ref_body_pos_extend = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
             self.dif_global_body_pos = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+
+    def _init_adaptive_sigma(self):
+        if not 'adaptive_tracking_sigma' in self.config.rewards or not self.config.rewards.adaptive_tracking_sigma.enable:
+            self._update_adaptive_sigma = lambda *args, **kwargs: None
+            logger.info("Adaptive tracking sigma Disabled")
+            return
+        logger.info("Adaptive tracking sigma Enabled")
+        self._reward_error_ema = dict()
+        for key, value in self.config.rewards.reward_tracking_sigma.items():
+            self._reward_error_ema[key] = value
 
     def start_compute_metrics(self):
         self.compute_metrics = True
@@ -222,11 +223,12 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         if len(env_ids) == 0:
             return
         self.motion_len[env_ids] = self._motion_lib.get_motion_length(self.motion_ids[env_ids])
-        # if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
-        #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
-        # else:
-        self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-        #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+        if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+        else:
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
         # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         # offset = self.env_origins
@@ -238,13 +240,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._motion_lib.load_motions(random_sample=True)
         self.reset_envs_idx(torch.arange(self.num_envs, device=self.device))
 
-
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
-        
         offset = self.env_origins
         B = self.motion_ids.shape[0]
-        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1
+        motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 #DY: dt use 0.02, while motion use 0.0333
         # motion_res = self._get_state_from_motionlib_cache_trimesh(self.motion_ids, motion_times, offset= offset)
 
         ## current robot reference data ##
@@ -256,14 +256,18 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ref_body_ang_vel_extend = motion_res["body_ang_vel_t"] # [num_envs, num_markers, 3]
         ref_joint_pos = motion_res["dof_pos"] # [num_envs, num_dofs]
         ref_joint_vel = motion_res["dof_vel"] # [num_envs, num_dofs]
+        self.ref_robot_root_pos = motion_res['root_pos']
+        self.ref_robot_root_rot = motion_res['root_rot']
+        self.ref_robot_root_vel = motion_res['root_vel']
 
         ## current target reference data ##
-        motion_frames = torch.clip((motion_times* 30).round().int(), 0, 127) #[ 23, 106,  15,  86]
-        ref_target_root_state = self.ref_target_root_state[torch.arange(self.num_envs),motion_frames[torch.arange(self.num_envs)],:]  ## (N, 13)
-        self.cur_tar_root_pos = ref_target_root_state[:,:3] # Env,3
-        self.cur_tar_root_rot = ref_target_root_state[:,3:7]
-        self.cur_tar_root_vel = ref_target_root_state[:,7:10]
-        self.cur_tar_root_ang_vel = ref_target_root_state[:,10:13]
+        self.ref_tar_root_pos = motion_res["o_rb_pos"]
+        self.ref_tar_root_rot = motion_res["o_rb_rot"]
+        self.ref_tar_root_vel = motion_res["o_lin_vel"]
+        self.ref_tar_root_ang_vel = motion_res["o_ang_vel"]
+        self.ref_body_key_contact = motion_res["body_contact"]
+        self.ref_tar_contact = motion_res["obj_contact"]
+        self.ref_ig = motion_res["ig"]
 
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
@@ -349,7 +353,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         else:
             ref_vr_3point_pos = self.teleop_marker_coords
         vr_2root_pos = (ref_vr_3point_pos - self.simulator.robot_root_states[:, 0:3].view(env_batch_size, 1, 3))
-        heading_inv_rot_vr = heading_inv_rot.repeat(3,1)
+        heading_inv_rot_vr = heading_inv_rot.repeat(len(self.motion_tracking_id),1)
         self._obs_vr_3point_pos = my_quat_rotate(heading_inv_rot_vr.view(-1, 4), vr_2root_pos.view(-1, 3)).view(env_batch_size, -1)
         #################### Deepmimic phase ###################### 
 
@@ -440,20 +444,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         else:
             motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1  #[256]
-            motion_frames = (motion_times* 30).round().int()
+            motion_frames = (motion_times* 30.).round().int()
             #print(motion_frames)
             offset = self.env_origins
             motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
 
-            #motion_frames = self.episode_length_buf + (self.motion_start_times * 30.).int()
-            ref_target_root_state = self.ref_target_root_state[env_ids,motion_frames[env_ids],:]  ## (N, 13)
-            target_root_pos = ref_target_root_state[:,:3] # M,3
-            target_root_rot = ref_target_root_state[:,3:7]
-            target_root_vel = ref_target_root_state[:,7:10]
-            target_root_ang_vel = ref_target_root_state[:,10:13]
-
-
-
+            ref_tar_root_pos = motion_res["o_rb_pos"][env_ids]
+            ref_tar_root_rot = motion_res["o_rb_rot"][env_ids]
+            ref_tar_root_vel = motion_res["o_lin_vel"][env_ids]
+            ref_tar_root_ang_vel = motion_res["o_ang_vel"][env_ids]
             root_pos_noise = self.config.init_noise_scale.root_pos * self.config.noise_to_initial_level
             root_rot_noise = self.config.init_noise_scale.root_rot * 3.14 / 180 * self.config.noise_to_initial_level
             root_vel_noise = self.config.init_noise_scale.root_vel * self.config.noise_to_initial_level
@@ -464,15 +463,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_vel = motion_res['root_vel'][env_ids]
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
-            #print("reset target_root_pos:", target_root_pos)
-
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             #print("reset_before", self.simulator.all_root_states.view(self.num_envs, 2, 13)[2, 1, :3])
-            self.simulator.all_root_states.view(self.num_envs, 2, 13)[env_ids, 1, :3] = target_root_pos + torch.randn_like(target_root_pos) * root_pos_noise
+            self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
             #self.simulator.tar_root_states[env_ids, :3] = target_root_pos + torch.randn_like(target_root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)
-                self.simulator.tar_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(target_root_rot.shape[0], root_rot_noise), target_root_rot, w_last=True)
+                self.simulator.tar_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(ref_tar_root_rot.shape[0], root_rot_noise), ref_tar_root_rot, w_last=True)
             elif self.config.simulator.config.name == 'isaacsim':
                 self.simulator.robot_root_states[env_ids, 3:7] = xyzw_to_wxyz(quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True))
             elif self.config.simulator.config.name == 'genesis':
@@ -482,10 +479,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             else:
                 raise NotImplementedError
             self.simulator.robot_root_states[env_ids, 7:10] = root_vel + torch.randn_like(root_vel) * root_vel_noise
-            self.simulator.tar_root_states[env_ids, 7:10] = target_root_vel + torch.randn_like(target_root_vel) * root_vel_noise
+            self.simulator.tar_root_states[env_ids, 7:10] = ref_tar_root_vel + torch.randn_like(ref_tar_root_vel) * root_vel_noise
 
             self.simulator.robot_root_states[env_ids, 10:13] = root_ang_vel + torch.randn_like(root_ang_vel) * root_ang_vel_noise
-            self.simulator.tar_root_states[env_ids, 10:13] = target_root_ang_vel + torch.randn_like(target_root_ang_vel) * root_ang_vel_noise
+            self.simulator.tar_root_states[env_ids, 10:13] = ref_tar_root_ang_vel + torch.randn_like(ref_tar_root_ang_vel) * root_ang_vel_noise
 
 
     def small_random_quaternions(self, n, max_angle):
@@ -620,6 +617,14 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         return torch.cat(history_tensors, dim=1)
     ###############################################################
 
+    def _update_adaptive_sigma(self, error:torch.Tensor, term:str):
+        alpha = self.config.rewards.adaptive_tracking_sigma.alpha
+        
+        self._reward_error_ema[term] = self._reward_error_ema[term] * (1-alpha) + error.mean().item() * alpha
+        
+        self.config.rewards.reward_tracking_sigma[term] = min(self._reward_error_ema[term], self.config.rewards.reward_tracking_sigma[term])
+
+
     def _reward_teleop_body_position_extend(self):
         upper_body_diff = self.dif_global_body_pos[:, self.upper_body_id, :]
         lower_body_diff = self.dif_global_body_pos[:, self.lower_body_id, :]
@@ -631,12 +636,17 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         r_body_pos_lower = torch.exp(-diff_body_pos_dist_lower / self.config.rewards.reward_tracking_sigma.teleop_lower_body_pos)
         r_body_pos = r_body_pos_lower * self.config.rewards.teleop_body_pos_lowerbody_weight + r_body_pos_upper * self.config.rewards.teleop_body_pos_upperbody_weight
     
+        self._update_adaptive_sigma(diff_body_pos_dist_upper, 'teleop_upper_body_pos')
+        self._update_adaptive_sigma(diff_body_pos_dist_lower, 'teleop_lower_body_pos')
+
         return r_body_pos
     
     def _reward_teleop_vr_3point(self):
         vr_3point_diff = self.dif_global_body_pos[:, self.motion_tracking_id, :]
         vr_3point_dist = (vr_3point_diff**2).mean(dim=-1).mean(dim=-1)
         r_vr_3point = torch.exp(-vr_3point_dist / self.config.rewards.reward_tracking_sigma.teleop_vr_3point_pos)
+
+        self._update_adaptive_sigma(vr_3point_dist, 'teleop_vr_3point_pos')
         return r_vr_3point
 
     def _reward_teleop_body_position_feet(self):
@@ -644,49 +654,144 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         feet_diff = self.dif_global_body_pos[:, self.feet_indices, :]
         feet_dist = (feet_diff**2).mean(dim=-1).mean(dim=-1)
         r_feet = torch.exp(-feet_dist / self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
+        self._update_adaptive_sigma(feet_dist, 'teleop_feet_pos')
         return r_feet
     
     def _reward_teleop_body_rotation_extend(self):
         rotation_diff = self.dif_global_body_rot
         diff_body_rot_dist = (rotation_diff**2).mean(dim=-1).mean(dim=-1)
         r_body_rot = torch.exp(-diff_body_rot_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+        self._update_adaptive_sigma(diff_body_rot_dist, 'teleop_body_rot')
         return r_body_rot
 
-    def _reward_tar_position(self):
+    def _reward_teleop_tar_pos(self):
 
-        tar_position_dist = ((self.cur_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
-        t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+        tar_position_dist = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
+        t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_pos)
+        self._update_adaptive_sigma(tar_position_dist, 'teleop_tar_pos')
         return t_pos
     
-    def _reward_tar_rotation(self):
-        tar_rotation_dist = ((self.cur_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
-        t_rot = torch.exp(-tar_rotation_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+    def _reward_teleop_tar_rot(self):
+        tar_rotation_dist = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
+        t_rot = torch.exp(-tar_rotation_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_rot)
+        self._update_adaptive_sigma(tar_rotation_dist, 'teleop_tar_rot')
         return t_rot
 
     def _reward_teleop_body_velocity_extend(self):
         velocity_diff = self.dif_global_body_vel    
         diff_body_vel_dist = (velocity_diff**2).mean(dim=-1).mean(dim=-1)
         r_body_vel = torch.exp(-diff_body_vel_dist / self.config.rewards.reward_tracking_sigma.teleop_body_vel)
+        self._update_adaptive_sigma(diff_body_vel_dist, 'teleop_body_vel')
         return r_body_vel
     
     def _reward_teleop_body_ang_velocity_extend(self):
         ang_velocity_diff = self.dif_global_body_ang_vel
         diff_body_ang_vel_dist = (ang_velocity_diff**2).mean(dim=-1).mean(dim=-1)
         r_body_ang_vel = torch.exp(-diff_body_ang_vel_dist / self.config.rewards.reward_tracking_sigma.teleop_body_ang_vel)
+        self._update_adaptive_sigma(diff_body_ang_vel_dist, 'teleop_body_ang_vel')
         return r_body_ang_vel
 
     def _reward_teleop_joint_position(self):
         joint_pos_diff = self.dif_joint_angles
         diff_joint_pos_dist = (joint_pos_diff**2).mean(dim=-1)
         r_joint_pos = torch.exp(-diff_joint_pos_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_pos)
+        self._update_adaptive_sigma(diff_joint_pos_dist, 'teleop_joint_pos')
         return r_joint_pos
     
     def _reward_teleop_joint_velocity(self):
         joint_vel_diff = self.dif_joint_velocities
         diff_joint_vel_dist = (joint_vel_diff**2).mean(dim=-1)
         r_joint_vel = torch.exp(-diff_joint_vel_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_vel)
+        self._update_adaptive_sigma(diff_joint_vel_dist, 'teleop_joint_vel')
         return r_joint_vel
     
+    def _reward_interation_graph(self):
+        object_points = self.simulator.object_points[self.simulator.object_id[self.data_id]]
+        obj_rot_extend = self.simulator.tar_root_states[:, 3:7].unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        object_points_extend = object_points.view(-1, 3)
+        obj_points = torch_utils.quat_rotate(obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.simulator.tar_root_states[:, :3].unsqueeze(1)
+        
+        ref_obj_rot_extend = self.ref_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        ref_obj_points = torch_utils.quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
+
+        len_keypos = len(self.key_Bodies_indices)
+        self.ig = self.simulator._rigid_body_pos[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - obj_points.unsqueeze(1)
+        self.ref_ig = self.ref_body_pos_extend[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - ref_obj_points.unsqueeze(1)
+        ### interaction graph reward ###
+        weight_1 = (1 / torch.clamp((self.ig**2).sum(dim=-1), min=0.01))
+        weight_1 = weight_1 / weight_1.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
+        weight_2 = (1 / torch.clamp((self.ref_ig**2).sum(dim=-1), min=0.01))
+        weight_2 = weight_2 / weight_2.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
+
+        eig = ((self.ig - self.ref_ig)**2).sum(dim=-1) * (weight_1 + weight_2)  
+
+        rig = torch.exp(-(eig.sum(dim=-1).sum(dim=-1) * 0.5) / self.config.rewards.reward_tracking_sigma.teleop_interation_graph)
+
+        # reset_ig_1 = (((self.ig - self.ref_ig)**2).sum(dim=-1).sqrt() / torch.clamp((self.ref_ig**2).sum(dim=-1).sqrt(), min=0.5)).max(dim=-1)[0].max(dim=-1)[0] > 2
+        # reset_ig_2 = (((self.ig - self.ref_ig)**2).sum(dim=-1).sqrt() / torch.clamp((self.ig**2).sum(dim=-1).sqrt(), min=0.5)).max(dim=-1)[0].max(dim=-1)[0] > 2
+        # reset_ig = torch.logical_or(reset_ig_1, reset_ig_2)        
+        self._update_adaptive_sigma((eig.sum(dim=-1).sum(dim=-1) * 0.5), 'teleop_interation_graph')
+
+        return rig #, reset_ig
+
+    def _reward_hand_contact(self):
+        contact_thres = 0.1
+        ref_contact_hand = torch.any(torch.abs(self.ref_body_key_contact) > 0.1, dim=-1).float() 
+        ref_contact_hand = torch.cat((ref_contact_hand[:,:7], ref_contact_hand[:,8:]), dim=-1) # Env,19
+
+        contact_hand = torch.any(torch.abs(self.simulator.contact_forces) > 0.1, dim=-1).float()[:,self.contact_Bodies_indices] # Env,20
+        left_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
+                            if "left_wrist_yaw_link" in self.contact_Bodies[i] or
+                            "left_hand_index_1_link" in self.contact_Bodies[i] or 
+                            "left_hand_middle_1_link" in self.contact_Bodies[i] or
+                            "left_hand_thumb_2_link" in self.contact_Bodies[i]]
+        ref_left_contact_hand = ref_contact_hand[:,left_contact_hand_ids]  # Env,Len,3
+        ref_left_contact_hand_any = torch.any(ref_left_contact_hand > contact_thres, dim=-1).float()
+        left_hand_contact = contact_hand[:,left_contact_hand_ids].clone()
+        left_hand_contact_any = torch.any(left_hand_contact > contact_thres, dim=-1, keepdim=True).float()
+
+        ecg_left = (((ref_left_contact_hand > contact_thres) * torch.abs(left_hand_contact - ref_left_contact_hand)).sum(dim=-1))
+        rcg_left = 0.5 * (1 + torch.exp(-ecg_left / self.config.rewards.reward_tracking_sigma.teleop_hand_contact)) * (ref_left_contact_hand_any) + (1 - ref_left_contact_hand_any)
+        right_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
+                                 if "right_wrist_yaw_link" in self.contact_Bodies[i] or
+                                 "right_hand_index_1_link" in self.contact_Bodies[i] or 
+                                 "right_hand_middle_1_link" in self.contact_Bodies[i] or
+                                 "right_hand_thumb_2_link" in self.contact_Bodies[i]]
+        ref_right_contact_hand = ref_contact_hand[:,right_contact_hand_ids] 
+        ref_right_contact_hand_any = torch.any(ref_right_contact_hand > contact_thres, dim=-1).float()
+        right_hand_contact = contact_hand[:,right_contact_hand_ids].clone()
+        right_hand_contact_any = torch.any(right_hand_contact > contact_thres, dim=-1, keepdim=True).float()
+
+        contact_reset = torch.cat([ 
+                                torch.abs(ref_left_contact_hand_any.unsqueeze(-1) - left_hand_contact_any) * ref_left_contact_hand_any.unsqueeze(-1), 
+                                torch.abs(ref_right_contact_hand_any.unsqueeze(-1) - right_hand_contact_any) * ref_right_contact_hand_any.unsqueeze(-1),
+                                ], dim=-1)
+        
+        ecg_right = (((ref_right_contact_hand > contact_thres) * torch.abs(right_hand_contact - ref_right_contact_hand)).sum(dim=-1))
+        rcg_right = 0.5 * (1 + torch.exp(-ecg_right / self.config.rewards.reward_tracking_sigma.teleop_hand_contact)) * (ref_right_contact_hand_any) + (1 - ref_right_contact_hand_any)
+        
+        rcg_hand = rcg_left + rcg_right
+
+        other_ids = [i for i in range(len(self.contact_Bodies)) if i not in left_contact_hand_ids and i not in right_contact_hand_ids]
+        ref_other_contact = ref_contact_hand[:, other_ids]
+        other_contact = contact_hand[:, other_ids]
+        ecg_other = ((torch.abs(other_contact - ref_other_contact) * (ref_other_contact > contact_thres))).mean(dim=-1)
+        rcg_other = torch.exp(-ecg_other / self.config.rewards.reward_tracking_sigma.teleop_hand_contact)
+        
+        no_contact = torch.abs(contact_hand) < contact_thres
+        ecg_all = (torch.abs(no_contact + ref_contact_hand) * (ref_contact_hand < -contact_thres)).mean(dim=-1)
+        rcg_all = torch.exp(-ecg_all / self.config.rewards.reward_tracking_sigma.teleop_hand_contact)
+
+        contact_all = self.simulator.contact_forces.clone().abs().sum(dim=-1).sum(dim=-1)
+        contact_energy = contact_all.pow(2).mul(-0.000000005).exp()
+
+        rcg = rcg_hand #+ rcg_other + rcg_all  #+ contact_energy
+
+        self._update_adaptive_sigma(ecg_right, 'teleop_hand_contact')
+
+        return rcg #, contact_reset
+
+
     def setup_visualize_entities(self):
         if self.debug_viz and self.config.simulator.config.name == "genesis":
             num_visualize_markers = len(self.config.robot.motion.visualization.marker_joint_colors)

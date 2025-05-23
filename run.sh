@@ -1,0 +1,13 @@
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+HYDRA_FULL_ERROR=1 python humanoidverse/train_agent.py \
++simulator=isaacgym \
++exp=locomotion \
++domain_rand=NO_domain_rand \
++rewards=loco/reward_g1_locomotion \
++robot=g1/g1_29dof_anneal_23dof \
++terrain=terrain_locomotion_plane \
++obs=loco/leggedloco_obs_singlestep_withlinvel \
+num_envs=2 \
+project_name=TestIsaacGymInstallation \
+experiment_name=G123dof_loco \
+headless=True

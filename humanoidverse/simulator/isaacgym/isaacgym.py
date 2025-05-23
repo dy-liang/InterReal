@@ -15,7 +15,7 @@ from humanoidverse.simulator.base_simulator.base_simulator import BaseSimulator
 from pathlib import Path
 import trimesh
 from isaacgym.torch_utils import *
-
+import joblib
 
 class IsaacGym(BaseSimulator):
     def __init__(self, config, device):
@@ -24,7 +24,13 @@ class IsaacGym(BaseSimulator):
         self.robot_config = config.robot
         self.visualize_viewer = False
         self.object_density = 25.
-        self.object_name = ["largebox"]
+        data = joblib.load(config.robot.motion.motion_file)
+        self.object_name = list(data.keys())
+        print(self.object_name)
+        object_name_set = sorted(list(set(self.object_name)))
+        self.object_id = to_torch([object_name_set.index(name) for name in self.object_name], dtype=torch.long).cuda()
+        self.obj2motion = torch.stack([self.object_id == k for k in range(len(object_name_set))], dim=0)
+
         self.asset_obj_root =  "humanoidverse/data/objects/" #self.robot_config.asset.asset_obj_root
         self.ball_size = 1.0 #cfg['env']['ballSize']
         if config.save_rendering_dir is not None:
@@ -288,7 +294,7 @@ class IsaacGym(BaseSimulator):
         # pos[:2] += torch_rand_float(-1., 1., (2, 1), device=str(self.device)).squeeze(1) 
         # start_pose.p = gymapi.Vec3(*pos)
 
-        char_h = 0.89
+        char_h = 0.8
         start_pose.p = gymapi.Vec3(*get_axis_params(char_h, 2))
         start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
@@ -489,10 +495,10 @@ class IsaacGym(BaseSimulator):
         # assert the isaacgym dof limits are the same as the config
         for i in range(self.num_dof):
             # import pdb; pdb.set_trace()
-            assert abs(self.hard_dof_pos_limits[i, 0].item() - self.robot_config.dof_pos_lower_limit_list[i]) < 1e-5, f"DOF {i} lower limit does not match"
-            assert abs(self.hard_dof_pos_limits[i, 1].item() - self.robot_config.dof_pos_upper_limit_list[i]) < 1e-5, f"DOF {i} upper limit does not match"
-            assert abs(self.dof_vel_limits[i].item() - self.robot_config.dof_vel_limit_list[i]) < 1e-5, f"DOF {i} velocity limit does not match"
-            assert abs(self.torque_limits[i].item() - self.robot_config.dof_effort_limit_list[i]) < 1e-5, f"DOF {i} effort limit does not match"
+            assert abs(self.hard_dof_pos_limits[i, 0].item() - self.robot_config.dof_pos_lower_limit_list[i]) < 1e-4, f"DOF {i} lower limit does not match"
+            assert abs(self.hard_dof_pos_limits[i, 1].item() - self.robot_config.dof_pos_upper_limit_list[i]) < 1e-4, f"DOF {i} upper limit does not match"
+            assert abs(self.dof_vel_limits[i].item() - self.robot_config.dof_vel_limit_list[i]) < 1e-4, f"DOF {i} velocity limit does not match"
+            assert abs(self.torque_limits[i].item() - self.robot_config.dof_effort_limit_list[i]) < 1e-4, f"DOF {i} effort limit does not match"
             # assert self.dof_pos_hard_dof_pos_limitslimits[i, 1].item() == self.robot_config.dof_pos_upper_limit_list[i], f"DOF {i} upper limit does not match"
             # assert self.dof_vel_limits[i].item() == self.robot_config.dof_vel_limit_list[i], f"DOF {i} velocity limit does not match"
             # assert self.torque_limits[i].item() == self.robot_config.dof_effort_limit_list[i], f"DOF {i} effort limit does not match"

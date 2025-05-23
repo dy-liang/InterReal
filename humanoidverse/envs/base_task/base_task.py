@@ -75,6 +75,7 @@ class BaseTask():
         # self.sim = self.simulator.sim
         if self.headless == False:
             self.viewer = self.simulator.viewer
+        self.debug_viz = False
 
 
     def _init_buffers(self):
@@ -183,6 +184,10 @@ class BaseTask():
     def _setup_robot_body_indices(self):
         feet_names = [s for s in self.body_names if self.config.robot.foot_name in s]
         knee_names = [s for s in self.body_names if self.config.robot.knee_name in s]
+        right_hand_names = self.config.robot.right_hand_name #[s for s in self.body_names if self.config.robot.right_hand_name in s]
+        left_hand_names = self.config.robot.left_hand_name #[s for s in self.body_names if self.config.robot.left_hand_name in s] 
+        self.contact_Bodies = self.config.robot.contact_Bodies #[s for s in self.body_names if self.config.robot.contact_Bodies in s]
+        self.key_Bodies = self.config.robot.key_Bodies
         penalized_contact_names = []
         for name in self.config.robot.penalize_contacts_on:
             penalized_contact_names.extend([s for s in self.body_names if name in s])
@@ -198,9 +203,25 @@ class BaseTask():
         for i in range(len(knee_names)):
             self.knee_indices[i] = self.simulator.find_rigid_body_indice(knee_names[i])
 
+        self.right_hand_indices = torch.zeros(len(right_hand_names), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(right_hand_names)):
+            self.right_hand_indices[i] = self.simulator.find_rigid_body_indice(right_hand_names[i])
+
+        self.left_hand_indices = torch.zeros(len(left_hand_names), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(left_hand_names)):
+            self.left_hand_indices[i] = self.simulator.find_rigid_body_indice(left_hand_names[i])
+
+        self.contact_Bodies_indices = torch.zeros(len(self.contact_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(self.contact_Bodies)):
+            self.contact_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.contact_Bodies[i])
+        print(self.contact_Bodies_indices)
+
+        self.key_Bodies_indices = torch.zeros(len(self.key_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(self.key_Bodies)):
+            self.key_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.key_Bodies[i])
+        print(self.key_Bodies_indices)
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
-            
             self.penalised_contact_indices[i] = self.simulator.find_rigid_body_indice(penalized_contact_names[i])
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
