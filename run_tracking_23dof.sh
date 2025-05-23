@@ -23,5 +23,3 @@ env.config.termination_curriculum.terminate_when_motion_far_initial_threshold=0.
 env.config.termination_curriculum.terminate_when_motion_far_curriculum_degree=0.000025 \
 robot.asset.self_collisions=0 \
 headless=True
-
-#InterMimic/InterAct/OMOMO_retarget/motions/omomo_g1_29dof_with_hand.pkl
