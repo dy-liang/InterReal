@@ -125,10 +125,10 @@ robot:
       waist_yaw_joint : 0.
       waist_roll_joint : 0.
       waist_pitch_joint : 0.
-      left_shoulder_pitch_joint: 0.
-      left_shoulder_roll_joint: 0.
+      left_shoulder_pitch_joint: 0.2
+      left_shoulder_roll_joint: 0.2
       left_shoulder_yaw_joint: 0.
-      left_elbow_joint: 0.5 #0.-origin
+      left_elbow_joint: 0.9
 
       left_wrist_roll_joint: 0.
       left_wrist_pitch_joint: 0.
@@ -141,10 +141,10 @@ robot:
       left_hand_thumb_1_joint: 0.
       left_hand_thumb_2_joint: 0.
 
-      right_shoulder_pitch_joint: 0.
-      right_shoulder_roll_joint: 0.
+      right_shoulder_pitch_joint: 0.2
+      right_shoulder_roll_joint: -0.2
       right_shoulder_yaw_joint: 0.
-      right_elbow_joint: 0.5 #0.
+      right_elbow_joint: 0.9
 
       right_wrist_roll_joint: 0.
       right_wrist_pitch_joint: 0.
@@ -170,20 +170,20 @@ robot:
       hip_yaw: 100
       hip_roll: 100
       hip_pitch: 100
-      knee: 200
-      ankle_pitch: 20
-      ankle_roll: 20
+      knee: 150
+      ankle_pitch: 40
+      ankle_roll: 40
       waist_yaw: 400
       waist_roll: 400
       waist_pitch: 400
-      shoulder_pitch: 90
-      shoulder_roll: 60
-      shoulder_yaw: 20
-      elbow: 60
+      shoulder_pitch: 100
+      shoulder_roll: 100
+      shoulder_yaw: 50
+      elbow: 50
 
       wrist_roll: 60
-      wrist_pitch: 10
-      wrist_yaw: 10
+      wrist_pitch: 20
+      wrist_yaw: 20
       hand_index_0: 5
       hand_index_1: 5
       hand_middle_0: 5
@@ -193,23 +193,23 @@ robot:
       hand_thumb_2: 5
 
     damping: # [N*m/rad]  # [N*m*s/rad]
-      hip_yaw: 2.5
-      hip_roll: 2.5
-      hip_pitch: 2.5
-      knee: 5.0
-      ankle_pitch: 0.2
-      ankle_roll: 0.1
+      hip_yaw: 2.0
+      hip_roll: 2.0
+      hip_pitch: 2.0
+      knee: 4.0
+      ankle_pitch: 2.0
+      ankle_roll: 2.0
       waist_yaw: 5.0
       waist_roll: 5.0
       waist_pitch: 5.0
       shoulder_pitch: 2.0
-      shoulder_roll: 1.0
-      shoulder_yaw: 0.4
-      elbow: 1.0
+      shoulder_roll: 2.0
+      shoulder_yaw: 2.0
+      elbow: 2.0
 
-      wrist_roll: 0.5
-      wrist_pitch: 0.1
-      wrist_yaw: 0.1
+      wrist_roll: 2
+      wrist_pitch: 1.0
+      wrist_yaw: 1.0
       hand_index_0: 0.1
       hand_index_1: 0.1
       hand_middle_0: 0.1

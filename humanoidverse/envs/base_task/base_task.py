@@ -75,6 +75,7 @@ class BaseTask():
         # self.sim = self.simulator.sim
         if self.headless == False:
             self.viewer = self.simulator.viewer
+        self.debug_viz = False
 
 
     def _init_buffers(self):

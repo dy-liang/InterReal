@@ -5,7 +5,7 @@ num_envs: 4096
 auto_load_latest: false
 checkpoint: null
 project_name: MotionTracking
-experiment_name: Rondom_43Dof_woTrackR_woWristCt_0.5
+experiment_name: Start_NewURDF_OriginEP_43Dof
 base_dir: logs
 timestamp: ${now:%Y%m%d_%H%M%S}
 experiment_dir: ${base_dir}/${project_name}/${timestamp}-${experiment_name}-${log_task_name}-${robot.asset.robot_type}
@@ -185,7 +185,7 @@ robot:
       left_shoulder_pitch_joint: 0.0
       left_shoulder_roll_joint: 0.0
       left_shoulder_yaw_joint: 0.0
-      left_elbow_joint: 0.5
+      left_elbow_joint: 0.0
       left_wrist_roll_joint: 0.0
       left_wrist_pitch_joint: 0.0
       left_wrist_yaw_joint: 0.0
@@ -199,7 +199,7 @@ robot:
       right_shoulder_pitch_joint: 0.0
       right_shoulder_roll_joint: 0.0
       right_shoulder_yaw_joint: 0.0
-      right_elbow_joint: 0.5
+      right_elbow_joint: 0.0
       right_wrist_roll_joint: 0.0
       right_wrist_pitch_joint: 0.0
       right_wrist_yaw_joint: 0.0
@@ -927,8 +927,30 @@ robot:
     - right_hand_thumb_2_joint
     right_foot_name: r_foot_roll
     left_foot_name: l_foot_roll
-    nums_extend_bodies: 1
+    nums_extend_bodies: 3
     extend_config:
+    - joint_name: left_hand_link
+      parent_name: left_elbow_link
+      pos:
+      - 0.25
+      - 0.0
+      - 0.0
+      rot:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    - joint_name: right_hand_link
+      parent_name: right_elbow_link
+      pos:
+      - 0.25
+      - 0.0
+      - 0.0
+      rot:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
     - joint_name: head_link
       parent_name: torso_link
       pos:
@@ -941,8 +963,8 @@ robot:
       - 0.0
       - 0.0
     motion_tracking_link:
-    - left_hand_middle_1_link
-    - right_hand_middle_1_link
+    - left_hand_link
+    - right_hand_link
     - head_link
     lower_body_link:
     - pelvis
@@ -990,6 +1012,8 @@ robot:
     - right_hand_thumb_0_link
     - right_hand_thumb_1_link
     - right_hand_thumb_2_link
+    - left_hand_link
+    - right_hand_link
     - head_link
     pelvis_link: pelvis
     base_link: torso_link
@@ -1173,6 +1197,12 @@ robot:
       - - 0
         - 0.351
         - 0.613
+      - - 0
+        - 0.351
+        - 0.613
+      - - 0
+        - 0.351
+        - 0.613
 terrain:
   static_friction: 1.0
   dynamic_friction: 1.0
@@ -1327,6 +1357,7 @@ rewards:
   only_positive_rewards: false
   reward_scales:
     teleop_body_position_extend: 1.0
+    teleop_vr_3point: 1.6
     teleop_body_position_feet: 2.1
     teleop_body_rotation_extend: 0.5
     teleop_body_ang_velocity_extend: 0.5
@@ -1507,7 +1538,7 @@ obs:
   - tar_rot: 4
   - key_robot_contact: 19
   - ig: 189
-  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3 * 1'}
-  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3 * 1'}
+  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'}
+  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'}
   - ref_motion_phase: 1
   post_compute_config: {}

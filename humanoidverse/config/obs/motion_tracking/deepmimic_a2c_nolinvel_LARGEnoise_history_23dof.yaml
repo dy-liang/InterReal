@@ -40,30 +40,30 @@ obs:
   obs_auxiliary: # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
 
     history_actor: {
-      base_ang_vel: 3,
-      projected_gravity: 3,
-      dof_pos: 3,
-      dof_vel: 3,
-      actions: 3,
-      tar_pos: 3,
-      tar_rot: 3,
-      ig: 3,
-      key_robot_contact: 3,
-      ref_motion_phase: 3
+      base_ang_vel: 1,
+      projected_gravity: 1,
+      dof_pos: 1,
+      dof_vel: 1,
+      actions: 1,
+      tar_pos: 1,
+      tar_rot: 1,
+      ig: 1,
+      key_robot_contact: 1,
+      ref_motion_phase: 1
     }
 
     history_critic: {
-      base_lin_vel: 3,
-      base_ang_vel: 3,
-      projected_gravity: 3,
-      dof_pos: 3,
-      dof_vel: 3,
-      actions: 3,
-      tar_pos: 3,
-      tar_rot: 3,
-      key_robot_contact: 3,
-      ig: 3,
-      ref_motion_phase: 3
+      base_lin_vel: 1,
+      base_ang_vel: 1,
+      projected_gravity: 1,
+      dof_pos: 1,
+      dof_vel: 1,
+      actions: 1,
+      tar_pos: 1,
+      tar_rot: 1,
+      key_robot_contact: 1,
+      ig: 1,
+      ref_motion_phase: 1
     }
 
   obs_scales: {

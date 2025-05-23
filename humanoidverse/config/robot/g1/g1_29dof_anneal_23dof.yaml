@@ -133,32 +133,32 @@ robot:
       hip_yaw: 100
       hip_roll: 100
       hip_pitch: 100
-      knee: 200
-      ankle_pitch: 20
-      ankle_roll: 20
+      knee: 150
+      ankle_pitch: 40
+      ankle_roll: 40
       waist_yaw: 400
       waist_roll: 400
       waist_pitch: 400
-      shoulder_pitch: 90
-      shoulder_roll: 60
-      shoulder_yaw: 20
-      elbow: 60
+      shoulder_pitch: 100
+      shoulder_roll: 100
+      shoulder_yaw: 50
+      elbow: 50
 
 
     damping: # [N*m/rad]  # [N*m*s/rad]
-      hip_yaw: 2.5
-      hip_roll: 2.5
-      hip_pitch: 2.5
-      knee: 5.0
-      ankle_pitch: 0.2
-      ankle_roll: 0.1
+      hip_yaw: 2.0
+      hip_roll: 2.0
+      hip_pitch: 2.0
+      knee: 4.0
+      ankle_pitch: 2.0
+      ankle_roll: 2.0
       waist_yaw: 5.0
       waist_roll: 5.0
       waist_pitch: 5.0
       shoulder_pitch: 2.0
-      shoulder_roll: 1.0
-      shoulder_yaw: 0.4
-      elbow: 1.0
+      shoulder_roll: 2.0
+      shoulder_yaw: 2.0
+      elbow: 2.0
 
     # action scale: target angle = actionScale * action + defaultAngle
     action_scale: 0.25
@@ -183,14 +183,13 @@ robot:
     # xml_file: "g1/${robot.asset.robot_type}_fitmotionONLY.xml"
     robot_type: g1_29dof_anneal_23dof
     asset_obj_root: "humanoidverse/data/objects/"
-    self_collisions: 1 # 1 to disable, 0 to enable self collisions
+    self_collisions: 0 # 1 to disable, 0 to enable self collisions
     default_dof_drive_mode: 3
 
     fix_base_link: False # TEST: fix base link to world
 
   motion:
     motion_file : 'humanoidverse/data/motions/g1_23dof/250520_omomo_g1_with_hand_force_obj_bigbox_23dof.pkl'
-    objMotionPah: "humanoidverse/data/motions/g1_23dof/250520_omomo_g1_with_hand_force_obj_bigbox.pkl"
     # motion_file : 'humanoidverse/data/motions/g1_29dof/v1/singles/0-ACCAD_Male2General_c3d_A6- Box lift_poses.pkl'
     asset:
       assetRoot: "humanoidverse/data/robots/g1/"
