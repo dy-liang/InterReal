@@ -19,7 +19,7 @@ from humanoidverse.envs.env_utils.visualization import Point
 
 from humanoidverse.utils.motion_lib.skeleton import SkeletonTree
 
-from humanoidverse.utils.motion_lib.motion_lib_robot import MotionLibRobot
+from humanoidverse.utils.motion_lib.hoi_motion_lib_base import MotionLibHoi
 
 from termcolor import colored
 from loguru import logger
@@ -88,26 +88,12 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
     def _init_motion_lib(self):
         self.config.robot.motion.step_dt = self.dt
-        self._motion_lib = MotionLibRobot(self.config.robot.motion, num_envs=self.num_envs, device=self.device)
+        self._motion_lib = MotionLibHoi(self.config.robot.motion, num_envs=self.num_envs, device=self.device)
         if self.is_evaluating:
             self._motion_lib.load_motions(random_sample=False)
         else:
-            self._motion_lib.load_motions(random_sample=True)
+            self._motion_lib.load_motions(random_sample=False)
 
-        ####### load object motion ######
-        obj_dict = {}
-        self.ref_obj_motion_data = joblib.load(self.config.robot.motion.objMotionPah)
-        obj_dict["obj_pos"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_trans_offset"], requires_grad=False)  #(N,128,3)
-        obj_dict["obj_rot"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_rot"], requires_grad=False)
-        obj_dict["obj_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_lin_vel"], requires_grad=False)
-        obj_dict["obj_ang_vel"] = torch.tensor(self.ref_obj_motion_data["motion0"]["root_ang_vel"], requires_grad=False)
-        obj_dict["body_contact"] = torch.tensor(self.ref_obj_motion_data["motion0"]["body_contact"], requires_grad=False) 
-        self.ref_target_root_state = torch.cat((obj_dict["obj_pos"],obj_dict["obj_rot"],obj_dict["obj_vel"],obj_dict["obj_ang_vel"]), dim=-1) # (128,13)
-        self.ref_target_root_state = self.ref_target_root_state.unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device) # (N，128,13)
-        self.ref_body_key_contact = obj_dict["body_contact"].clone().unsqueeze(0).repeat(self.num_envs, 1, 1, 1).to(self.device)  # (N，128,20, 3)
-        #self.ref_target_root_state[:,:,0:3] = self.ref_target_root_state[:,:,0:3] + self.env_origins.unsqueeze(1).repeat(1, 128, 1)  # (N,128，3)
-
-        # res = self._motion_lib.get_motion_state(self.motion_ids, self.motion_times, offset=self.env_origins)
         res = self._resample_motion_times(torch.arange(self.num_envs))
         self.motion_dt = self._motion_lib._motion_dt
         self.motion_start_idx = 0
@@ -231,8 +217,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
-            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
         # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         # offset = self.env_origins
@@ -252,7 +238,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         # motion_res = self._get_state_from_motionlib_cache_trimesh(self.motion_ids, motion_times, offset= offset)
 
         ## current robot reference data ##
-        motion_res, frame_idx0, frame_idx1, blend = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
         ref_body_pos_extend = motion_res["rg_pos_t"]
         self.ref_body_pos_extend[:] = ref_body_pos_extend # for visualization and analysis
         ref_body_vel_extend = motion_res["body_vel_t"] # [num_envs, num_markers, 3]
@@ -265,12 +251,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_robot_root_vel = motion_res['root_vel']
 
         ## current target reference data ##
-        #motion_frames = torch.clip((motion_times* 30).round().int(), 0, 127) #[ 23, 106,  15,  86]
-        self.cur_tar_root_pos = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,:3]
-        self.cur_tar_root_rot = slerp(self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,3:7], self.ref_target_root_state[torch.arange(self.num_envs),frame_idx1,3:7], blend)
-        self.cur_tar_root_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,7:10]
-        self.cur_tar_root_ang_vel = (1.0 - blend) * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13] + blend * self.ref_target_root_state[torch.arange(self.num_envs),frame_idx0,10:13]
-        self.cur_body_key_contact = (1.0 - blend.unsqueeze(-1)) * self.ref_body_key_contact[torch.arange(self.num_envs),frame_idx0,:,:] + blend.unsqueeze(-1) * self.ref_body_key_contact[torch.arange(self.num_envs),frame_idx0,:,:]
+        self.ref_tar_root_pos = motion_res["o_rb_pos"]
+        self.ref_tar_root_rot = motion_res["o_rb_rot"]
+        self.ref_tar_root_vel = motion_res["o_lin_vel"]
+        self.ref_tar_root_ang_vel = motion_res["o_ang_vel"]
+        self.ref_body_key_contact = motion_res["body_contact"]
+        self.ref_tar_contact = motion_res["obj_contact"]
+        self.ref_ig = motion_res["ig"]
 
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
@@ -356,7 +343,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         else:
             ref_vr_3point_pos = self.teleop_marker_coords
         vr_2root_pos = (ref_vr_3point_pos - self.simulator.robot_root_states[:, 0:3].view(env_batch_size, 1, 3))
-        heading_inv_rot_vr = heading_inv_rot.repeat(3,1)
+        heading_inv_rot_vr = heading_inv_rot.repeat(len(self.motion_tracking_id),1)
         self._obs_vr_3point_pos = my_quat_rotate(heading_inv_rot_vr.view(-1, 4), vr_2root_pos.view(-1, 3)).view(env_batch_size, -1)
         #################### Deepmimic phase ###################### 
 
@@ -431,7 +418,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         if self.custom_origins: # trimesh
             motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
             offset = self.env_origins
-            motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+            motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
             self.simulator.robot_root_states[env_ids, :3] = motion_res['root_pos'][env_ids]
             # self.robot_root_states[env_ids, 2] += 0.04 # in case under the terrain
             if self.config.simulator.config.name == 'isaacgym':
@@ -450,17 +437,12 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             motion_frames = (motion_times* 30.).round().int()
             #print(motion_frames)
             offset = self.env_origins
-            motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
+            motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset) 
 
-            #motion_frames = self.episode_length_buf + (self.motion_start_times * 30.).int()
-            ref_target_root_state = self.ref_target_root_state[env_ids,motion_frames[env_ids],:]  ## (N, 13)
-            target_root_pos = ref_target_root_state[:,:3] # M,3
-            target_root_rot = ref_target_root_state[:,3:7]
-            target_root_vel = ref_target_root_state[:,7:10]
-            target_root_ang_vel = ref_target_root_state[:,10:13]
-
-
-
+            ref_tar_root_pos = motion_res["o_rb_pos"][env_ids]
+            ref_tar_root_rot = motion_res["o_rb_rot"][env_ids]
+            ref_tar_root_vel = motion_res["o_lin_vel"][env_ids]
+            ref_tar_root_ang_vel = motion_res["o_ang_vel"][env_ids]
             root_pos_noise = self.config.init_noise_scale.root_pos * self.config.noise_to_initial_level
             root_rot_noise = self.config.init_noise_scale.root_rot * 3.14 / 180 * self.config.noise_to_initial_level
             root_vel_noise = self.config.init_noise_scale.root_vel * self.config.noise_to_initial_level
@@ -471,15 +453,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_vel = motion_res['root_vel'][env_ids]
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
-            #print("reset target_root_pos:", target_root_pos)
-
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             #print("reset_before", self.simulator.all_root_states.view(self.num_envs, 2, 13)[2, 1, :3])
-            self.simulator.all_root_states.view(self.num_envs, 2, 13)[env_ids, 1, :3] = target_root_pos + torch.randn_like(target_root_pos) * root_pos_noise
+            self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
             #self.simulator.tar_root_states[env_ids, :3] = target_root_pos + torch.randn_like(target_root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)
-                self.simulator.tar_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(target_root_rot.shape[0], root_rot_noise), target_root_rot, w_last=True)
+                self.simulator.tar_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(ref_tar_root_rot.shape[0], root_rot_noise), ref_tar_root_rot, w_last=True)
             elif self.config.simulator.config.name == 'isaacsim':
                 self.simulator.robot_root_states[env_ids, 3:7] = xyzw_to_wxyz(quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True))
             elif self.config.simulator.config.name == 'genesis':
@@ -489,10 +469,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             else:
                 raise NotImplementedError
             self.simulator.robot_root_states[env_ids, 7:10] = root_vel + torch.randn_like(root_vel) * root_vel_noise
-            self.simulator.tar_root_states[env_ids, 7:10] = target_root_vel + torch.randn_like(target_root_vel) * root_vel_noise
+            self.simulator.tar_root_states[env_ids, 7:10] = ref_tar_root_vel + torch.randn_like(ref_tar_root_vel) * root_vel_noise
 
             self.simulator.robot_root_states[env_ids, 10:13] = root_ang_vel + torch.randn_like(root_ang_vel) * root_ang_vel_noise
-            self.simulator.tar_root_states[env_ids, 10:13] = target_root_ang_vel + torch.randn_like(target_root_ang_vel) * root_ang_vel_noise
+            self.simulator.tar_root_states[env_ids, 10:13] = ref_tar_root_ang_vel + torch.randn_like(ref_tar_root_ang_vel) * root_ang_vel_noise
 
 
     def small_random_quaternions(self, n, max_angle):
@@ -518,7 +498,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
         offset = self.env_origins
-        motion_res, _,_,_ = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
 
         dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
         dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
@@ -659,15 +639,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         r_body_rot = torch.exp(-diff_body_rot_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
         return r_body_rot
 
-    def _reward_tar_position(self):
+    def _reward_teleop_tar_pos(self):
 
-        tar_position_dist = ((self.cur_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
-        t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+        tar_position_dist = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
+        t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_pos)
         return t_pos
     
-    def _reward_tar_rotation(self):
-        tar_rotation_dist = ((self.cur_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
-        t_rot = torch.exp(-tar_rotation_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+    def _reward_teleop_tar_rot(self):
+        tar_rotation_dist = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
+        t_rot = torch.exp(-tar_rotation_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_rot)
         return t_rot
 
     def _reward_teleop_body_velocity_extend(self):
@@ -695,14 +675,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         return r_joint_vel
     
     def _reward_interation_graph(self):
-    # def compute_ig_reward(self, w, key_pos, ref_key_pos, obj_points, ref_obj_points):
         object_points = self.simulator.object_points[self.simulator.object_id[self.data_id]]
         obj_rot_extend = self.simulator.tar_root_states[:, 3:7].unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
         object_points_extend = object_points.view(-1, 3)
         obj_points = torch_utils.quat_rotate(obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.simulator.tar_root_states[:, :3].unsqueeze(1)
         
-        ref_obj_rot_extend = self.cur_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
-        ref_obj_points = torch_utils.quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.cur_tar_root_pos.unsqueeze(1)
+        ref_obj_rot_extend = self.ref_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        ref_obj_points = torch_utils.quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
 
         len_keypos = len(self.key_Bodies_indices)
         self.ig = self.simulator._rigid_body_pos[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - obj_points.unsqueeze(1)
@@ -724,13 +703,12 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
     def _reward_hand_contact(self):
         contact_thres = 0.1
-        ref_contact_hand = torch.any(torch.abs(self.cur_body_key_contact) > 0.1, dim=-1).float() 
+        ref_contact_hand = torch.any(torch.abs(self.ref_body_key_contact) > 0.1, dim=-1).float() 
         ref_contact_hand = torch.cat((ref_contact_hand[:,:7], ref_contact_hand[:,8:]), dim=-1) # Env,19
-        #ref_contact_hand = torch.cat((ref_contact_hand[:,:7], ref_contact_hand[:,8:10], ref_contact_hand[:,14:16]), dim=-1) # Env,13
 
         contact_hand = torch.any(torch.abs(self.simulator.contact_forces) > 0.1, dim=-1).float()[:,self.contact_Bodies_indices] # Env,20
         left_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
-                            if "left_wrist_yaw_link" in self.contact_Bodies[i] or
+                            if #"left_wrist_yaw_link" in self.contact_Bodies[i] or
                             "left_hand_index_1_link" in self.contact_Bodies[i] or 
                             "left_hand_middle_1_link" in self.contact_Bodies[i] or
                             "left_hand_thumb_2_link" in self.contact_Bodies[i]]
@@ -742,7 +720,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ecg_left = (((ref_left_contact_hand > contact_thres) * torch.abs(left_hand_contact - ref_left_contact_hand)).sum(dim=-1))
         rcg_left = 0.5 * (1 + torch.exp(-ecg_left*0.5)) * (ref_left_contact_hand_any) #+ (1 - ref_left_contact_hand_any)
         right_contact_hand_ids = [i for i in range(len(self.contact_Bodies))
-                                 if "right_wrist_yaw_link" in self.contact_Bodies[i] or
+                                 if #"right_wrist_yaw_link" in self.contact_Bodies[i] or
                                  "right_hand_index_1_link" in self.contact_Bodies[i] or 
                                  "right_hand_middle_1_link" in self.contact_Bodies[i] or
                                  "right_hand_thumb_2_link" in self.contact_Bodies[i]]
@@ -768,7 +746,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         rcg_other = torch.exp(-ecg_other*0.5)
         
         no_contact = torch.abs(contact_hand) < contact_thres
-        # print(no_contact, ref_all_contact)
         ecg_all = (torch.abs(no_contact + ref_contact_hand) * (ref_contact_hand < -contact_thres)).mean(dim=-1)
         rcg_all = torch.exp(-ecg_all*0.3)
 

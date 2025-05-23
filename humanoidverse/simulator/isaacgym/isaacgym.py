@@ -15,7 +15,7 @@ from humanoidverse.simulator.base_simulator.base_simulator import BaseSimulator
 from pathlib import Path
 import trimesh
 from isaacgym.torch_utils import *
-
+import joblib
 
 class IsaacGym(BaseSimulator):
     def __init__(self, config, device):
@@ -24,7 +24,9 @@ class IsaacGym(BaseSimulator):
         self.robot_config = config.robot
         self.visualize_viewer = False
         self.object_density = 25.
-        self.object_name = ["largebox"]
+        data = joblib.load(config.robot.motion.motion_file)
+        self.object_name = list(data.keys())
+        print(self.object_name)
         object_name_set = sorted(list(set(self.object_name)))
         self.object_id = to_torch([object_name_set.index(name) for name in self.object_name], dtype=torch.long).cuda()
         self.obj2motion = torch.stack([self.object_id == k for k in range(len(object_name_set))], dim=0)

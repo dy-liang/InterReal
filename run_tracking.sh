@@ -10,8 +10,8 @@ python humanoidverse/train_agent.py \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
 num_envs=4096 \
 project_name=MotionTracking \
-experiment_name=Start_NewURDF_OriginEP_43Dof \
-robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_force.pkl" \
+experiment_name=Start_MultiTask_OriginEP_43Dof_TrackID_PD2 \
+robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \

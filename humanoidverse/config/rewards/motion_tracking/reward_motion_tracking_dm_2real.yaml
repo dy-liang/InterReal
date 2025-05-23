@@ -16,8 +16,8 @@ rewards:
       teleop_body_velocity_extend: 0.5
       teleop_joint_position: 0.75
       teleop_joint_velocity: 0.5
-      tar_position: 1.0
-      tar_rotation: 0.5
+      teleop_tar_pos: 1.0
+      teleop_tar_rot: 0.5
       hand_contact: 1.0
       interation_graph: 1.0
       penalty_torques: -0.000001
@@ -55,6 +55,8 @@ rewards:
     teleop_body_ang_vel: 1.0
     teleop_joint_pos: 1.0
     teleop_joint_vel: 1.0
+    teleop_tar_pos: 0.1
+    teleop_tar_rot: 0.1
 
 
 

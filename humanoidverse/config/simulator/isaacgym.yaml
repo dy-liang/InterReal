@@ -26,3 +26,4 @@ simulator:
         max_depenetration_velocity: 50. #1.0
         default_buffer_size_multiplier: 20. #5
         contact_collection: 2
+        max_gpu_contact_pairs: 16777216

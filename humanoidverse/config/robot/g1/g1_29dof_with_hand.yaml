@@ -128,7 +128,7 @@ robot:
       left_shoulder_pitch_joint: 0.
       left_shoulder_roll_joint: 0.
       left_shoulder_yaw_joint: 0.
-      left_elbow_joint: 0. #0.-origin
+      left_elbow_joint: 0.5 #0.-origin
 
       left_wrist_roll_joint: 0.
       left_wrist_pitch_joint: 0.
@@ -144,7 +144,7 @@ robot:
       right_shoulder_pitch_joint: 0.
       right_shoulder_roll_joint: 0.
       right_shoulder_yaw_joint: 0.
-      right_elbow_joint: 0. #0.
+      right_elbow_joint: 0.5 #0.
 
       right_wrist_roll_joint: 0.
       right_wrist_pitch_joint: 0.
@@ -181,16 +181,16 @@ robot:
       shoulder_yaw: 20
       elbow: 60
 
-      wrist_roll: 20
+      wrist_roll: 60
       wrist_pitch: 10
       wrist_yaw: 10
-      hand_index_0: 3
-      hand_index_1: 3
-      hand_middle_0: 3
-      hand_middle_1: 3
-      hand_thumb_0: 3
-      hand_thumb_1: 3
-      hand_thumb_2: 3
+      hand_index_0: 5
+      hand_index_1: 5
+      hand_middle_0: 5
+      hand_middle_1: 5
+      hand_thumb_0: 5
+      hand_thumb_1: 5
+      hand_thumb_2: 5
 
     damping: # [N*m/rad]  # [N*m*s/rad]
       hip_yaw: 2.5
@@ -210,13 +210,13 @@ robot:
       wrist_roll: 0.5
       wrist_pitch: 0.1
       wrist_yaw: 0.1
-      hand_index_0: 0.03
-      hand_index_1: 0.03
-      hand_middle_0: 0.03
-      hand_middle_1: 0.03
-      hand_thumb_0: 0.03
-      hand_thumb_1: 0.03
-      hand_thumb_2: 0.03
+      hand_index_0: 0.1
+      hand_index_1: 0.1
+      hand_middle_0: 0.1
+      hand_middle_1: 0.1
+      hand_thumb_0: 0.1
+      hand_thumb_1: 0.1
+      hand_thumb_2: 0.1
       
     # action scale: target angle = actionScale * action + defaultAngle
     action_scale: 0.25
@@ -248,8 +248,6 @@ robot:
 
   motion:
     motion_file : 'humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_force.pkl'
-    objMotionPah: "humanoidverse/data/motions/g1_43dof/250519_omomo_g1_29dof_with_hand_forceobj_bigbox.pkl"
-    # motion_file : 'humanoidverse/data/motions/g1_29dof/v1/singles/0-ACCAD_Male2General_c3d_A6- Box lift_poses.pkl'
     asset:
       assetRoot: "humanoidverse/data/robots/g1/"
       # assetFileName: "g1_29dof_anneal_23dof.xml"
@@ -312,16 +310,16 @@ robot:
     left_foot_name: 'l_foot_roll'
 
 
-    nums_extend_bodies: 3
+    nums_extend_bodies: 1
     extend_config:
-      - joint_name: "left_hand_link"
-        parent_name: "left_elbow_link"
-        pos: [0.25, 0.0, 0.0]
-        rot: [1.0, 0.0, 0.0, 0.0] # w x y z
-      - joint_name: "right_hand_link"
-        parent_name: "right_elbow_link"
-        pos: [0.25, 0.0, 0.0]
-        rot: [1.0, 0.0, 0.0, 0.0] # w x y z
+      # - joint_name: "left_hand_link"
+      #   parent_name: "left_elbow_link"
+      #   pos: [0.25, 0.0, 0.0]
+      #   rot: [1.0, 0.0, 0.0, 0.0] # w x y z
+      # - joint_name: "right_hand_link"
+      #   parent_name: "right_elbow_link"
+      #   pos: [0.25, 0.0, 0.0]
+      #   rot: [1.0, 0.0, 0.0, 0.0] # w x y z
       - joint_name: "head_link"
         parent_name: "torso_link"
         pos: [0.0, 0.0, 0.42]
@@ -329,8 +327,14 @@ robot:
 
 
     motion_tracking_link:
-      - "left_hand_link"
-      - "right_hand_link"
+      - "left_hand_thumb_2_link"
+      - "left_hand_index_1_link"
+      - "left_hand_middle_1_link"
+      - "right_hand_thumb_2_link"
+      - "right_hand_index_1_link"
+      - "right_hand_middle_1_link"
+      - "right_ankle_roll_link"
+      - "left_ankle_roll_link"
       - "head_link"
 
     lower_body_link:
@@ -380,8 +384,8 @@ robot:
       - "right_hand_thumb_0_link"
       - "right_hand_thumb_1_link"
       - "right_hand_thumb_2_link"
-      - "left_hand_link"
-      - "right_hand_link"
+      # - "left_hand_link"
+      # - "right_hand_link"
       - "head_link"
 
 
@@ -466,8 +470,8 @@ robot:
       - [0.929, 0.867, 0.437]
       - [0.929, 0.867, 0.437]
       - [0.929, 0.867, 0.437]
-      - [0, 0.351, 0.613] # left_elbow_joint_extend
-      - [0, 0.351, 0.613] # right_elbow_joint_extend
+      #- [0, 0.351, 0.613] # left_elbow_joint_extend
+      #- [0, 0.351, 0.613] # right_elbow_joint_extend
       - [0, 0.351, 0.613] # head_link
 
 # Override motion lib default to use the adapted H1 variant

@@ -909,8 +909,8 @@ class LeggedRobotBase(BaseTask):
         ig = ig_all[:,self.key_Bodies_indices,:].view(self.num_envs, -1)
         ig_all = ig_all.view(self.num_envs, -1)                   # Env, 44*3
 
-        ref_obj_rot_extend = self.cur_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
-        ref_obj_points = quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.cur_tar_root_pos.unsqueeze(1)
+        ref_obj_rot_extend = self.ref_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+        ref_obj_points = quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
         ref_ig = compute_sdf(self.ref_body_pos_extend[:,self.key_Bodies_indices], ref_obj_points).view(-1, 3) # body_pos-torch.Size([256, 19, 3])
         ref_heading_rot = calc_heading_quat_inv(self.ref_robot_root_rot)
         ref_heading_rot_extend = ref_heading_rot.unsqueeze(1).repeat(1, L, 1).view(-1, 4)
