@@ -259,7 +259,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_robot_root_pos = motion_res['root_pos']
         self.ref_robot_root_rot = motion_res['root_rot']
         self.ref_robot_root_vel = motion_res['root_vel']
-
         ## current target reference data ##
         self.ref_tar_root_pos = motion_res["o_rb_pos"]
         self.ref_tar_root_rot = motion_res["o_rb_rot"]
@@ -512,6 +511,9 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         dof_vel = motion_res['dof_vel'][env_ids]
         self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
         self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
+
+    # def _physics_step(self):
+    #     super()._physics_step(self.ref_joint_pos)
 
 
     def _post_physics_step(self):

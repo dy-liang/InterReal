@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-python humanoidverse/train_agent.py \
+python python -m debugpy --listen 5677 --wait-for-client humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
 +domain_rand=NO_domain_rand \
