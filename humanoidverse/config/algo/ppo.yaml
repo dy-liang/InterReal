@@ -35,7 +35,7 @@ algo:
         output_dim: [robot_action_dim]
         layer_config:
           type: MLP
-          hidden_dims: [1024, 1024, 512]
+          hidden_dims: [1024, 512, 256]
           activation: ELU
       critic: 
         type: MLP
@@ -43,5 +43,5 @@ algo:
         output_dim: [1]
         layer_config:
           type: MLP
-          hidden_dims: [1024, 1024, 512]
+          hidden_dims: [1024, 512, 256]
           activation: ELU

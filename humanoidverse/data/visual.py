@@ -1,3 +1,6 @@
+import torch
+data = torch.load("/home/dmu00/LDY/ASAP-main/humanoidverse/data/dof_axis.pth")
+print(data)
 import pickle
 import  joblib
 #file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_29dof_anneal_23dof/TairanTestbed/singles/0-TairanTestbed_TairanTestbed_CR7_video_CR7_level1_filter_amass.pkl"

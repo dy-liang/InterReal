@@ -61,8 +61,10 @@ class PPO(BaseAlgo):
         # Env related Config
         self.num_envs: int = self.env.config.num_envs
         self.algo_obs_dim_dict = self.env.config.robot.algo_obs_dim_dict
-        self.num_act = self.env.config.robot.actions_dim
-
+        if self.env.config.robot.hybrid_control_mode:
+            self.num_act = self.env.config.robot.actions_dim - len(self.env.config.robot.hybrid_control.hand_open_dof)
+        else:
+            self.num_act = self.env.config.robot.actions_dim
         # Logging related Config
 
         self.save_interval = self.config.save_interval

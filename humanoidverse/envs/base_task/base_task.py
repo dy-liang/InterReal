@@ -42,6 +42,11 @@ class BaseTask():
         self.dim_obs = self.config.robot.policy_obs_dim
         self.dim_critic_obs = self.config.robot.critic_obs_dim
         self.dim_actions = self.config.robot.actions_dim
+        self.open_dof_name_list = self.config.robot.hybrid_control.hand_open_dof
+        if self.config.robot.hybrid_control_mode:
+            self.ppo_dim_actions = self.dim_actions - len(self.open_dof_name_list)
+        else:
+            self.ppo_dim_actions = self.dim_actions
 
         terrain_mesh_type = self.config.terrain.mesh_type
         self.simulator.setup_terrain(terrain_mesh_type)
@@ -98,7 +103,7 @@ class BaseTask():
         self.simulator.set_actor_root_state_tensor(torch.arange(self.num_envs, device=self.device), self.simulator.all_root_states)
         self.simulator.set_dof_state_tensor(torch.arange(self.num_envs, device=self.device), self.simulator.dof_state)
         # self._refresh_env_idx_tensors(torch.arange(self.num_envs, device=self.device))
-        actions = torch.zeros(self.num_envs, self.dim_actions, device=self.device, requires_grad=False)
+        actions = torch.zeros(self.num_envs, self.ppo_dim_actions, device=self.device, requires_grad=False)
         actor_state = {}
         actor_state["actions"] = actions
         obs_dict, _, _, _ = self.step(actor_state)
@@ -211,10 +216,12 @@ class BaseTask():
         for i in range(len(left_hand_names)):
             self.left_hand_indices[i] = self.simulator.find_rigid_body_indice(left_hand_names[i])
 
+        self.open_dof_indices = [self.dof_names.index(dof) for dof in self.open_dof_name_list]
+        print("Open Dof Indices:", self.open_dof_indices)
+
         self.contact_Bodies_indices = torch.zeros(len(self.contact_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(self.contact_Bodies)):
             self.contact_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.contact_Bodies[i])
-        print(self.contact_Bodies_indices)
 
         self.key_Bodies_indices = torch.zeros(len(self.key_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(self.key_Bodies)):

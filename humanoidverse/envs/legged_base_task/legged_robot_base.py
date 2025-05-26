@@ -51,7 +51,7 @@ class LeggedRobotBase(BaseTask):
         self.d_gains = torch.zeros(self.dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions_after_delay = torch.zeros(self.num_envs, self.dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.last_actions = torch.zeros(self.num_envs, self.dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.last_actions = torch.zeros(self.num_envs,  self.ppo_dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_pos = torch.zeros_like(self.simulator.dof_pos)
         self.last_dof_vel = torch.zeros_like(self.simulator.dof_vel)
         self.last_root_vel = torch.zeros_like(self.simulator.robot_root_states[:, 7:13])
@@ -223,6 +223,14 @@ class LeggedRobotBase(BaseTask):
         else:
             self.actions_after_delay = self.actions.clone()
 
+        if self.config.robot.hybrid_control_mode:
+            motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 
+            motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=None)
+
+            self.ref_joint_pos = motion_res["dof_pos"]
+            self.hybrid_action = torch.zeros(self.num_envs, self.dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
+            self.ppo_action_indices = [i for i in range(self.dim_actions) if i not in self.open_dof_indices]
+            self.hybrid_action[:,self.open_dof_indices] = self.ref_joint_pos[:,self.open_dof_indices]
 
     def _physics_step(self):
         self.render()
@@ -560,8 +568,13 @@ class LeggedRobotBase(BaseTask):
         """
         actions_scaled = actions * self.config.robot.control.action_scale
         control_type = self.config.robot.control.control_type
+        if self.config.robot.hybrid_control_mode:
+            self.hybrid_action[:,self.ppo_action_indices] = actions_scaled
+        else:
+            self.hybrid_action = actions_scaled
+
         if control_type=="P":
-            torques = self._kp_scale * self.p_gains*(actions_scaled + self.default_dof_pos - self.simulator.dof_pos) - self._kd_scale * self.d_gains*self.simulator.dof_vel
+            torques = self._kp_scale * self.p_gains*(self.hybrid_action + self.default_dof_pos - self.simulator.dof_pos) - self._kd_scale * self.d_gains*self.simulator.dof_vel
         elif control_type=="V":
             torques = self._kp_scale * self.p_gains*(actions_scaled - self.simulator.dof_vel) - self._kd_scale * self.d_gains*(self.simulator.dof_vel - self.last_dof_vel)/self.sim_dt
         elif control_type=="T":
@@ -602,10 +615,10 @@ class LeggedRobotBase(BaseTask):
             push_pos_list = [push_pos]
             push_mag_list = [1]
             push_color_schems = [(0.851, 0.144, 0.07)]
-            push_line_widths = [0.03]
+            push_line_widths = [0.01]
             for push_vel, push_pos, push_mag, push_color, push_line_width in zip(push_vel_list, push_pos_list, push_mag_list, push_color_schems, push_line_widths):
-                for _ in range(200):
-                    gymutil.draw_line(Point(push_pos +torch.rand(3, device=self.device) * push_line_width),
+                for _ in range(30):
+                    gymutil.draw_line(Point(push_pos +torch.rand(1, device=self.device) * push_line_width),
                                         Point(push_pos + push_vel * push_mag),
                                         Point(push_color),
                                         self.gym, self.viewer, self.envs[env_id])
