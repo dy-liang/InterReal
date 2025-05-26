@@ -259,7 +259,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_robot_root_pos = motion_res['root_pos']
         self.ref_robot_root_rot = motion_res['root_rot']
         self.ref_robot_root_vel = motion_res['root_vel']
-        ## current target reference data ##
+
+        #### current target reference data ####
         self.ref_tar_root_pos = motion_res["o_rb_pos"]
         self.ref_tar_root_rot = motion_res["o_rb_rot"]
         self.ref_tar_root_vel = motion_res["o_lin_vel"]
@@ -365,6 +366,14 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         # print(f"ref_motion_phase: {self._ref_motion_phase[0].item():.2f}")
         # print(f"ref_motion_length: {self._ref_motion_length[0].item():.2f}")
 
+        ################### Obj data #############################
+        local_tar_root_pos = self.simulator.tar_root_states[:, :3].view(env_batch_size, -1, 3) - self.simulator.robot_root_states[:, :3].view(env_batch_size, 1, 3)
+        local_tar_pos_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_tar_root_pos.view(-1, 3))
+        self._obs_local_tar_pos = local_tar_pos_flat.view(env_batch_size, -1) # (num_envs, 3)
+
+        local_tar_root_vel = self.simulator.tar_root_states[:, 7:10].view(env_batch_size, -1, 3)
+        local_tar_root_vel_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_tar_root_vel.view(-1, 3))
+        self._obs_local_tar_vel = local_tar_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
 
 
 
@@ -675,6 +684,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._update_adaptive_sigma(tar_rotation_dist, 'teleop_tar_rot')
         return t_rot
 
+    def _reward_teleop_tar_vel(self):
+
+        tar_vel_dist = ((self.ref_tar_root_vel - self.simulator.tar_root_states[:, 7:10])**2).mean(dim=-1)
+        t_pos = torch.exp(-tar_vel_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_vel)
+        self._update_adaptive_sigma(tar_vel_dist, 'teleop_tar_vel')
+        return t_pos
+    
     def _reward_teleop_body_velocity_extend(self):
         velocity_diff = self.dif_global_body_vel    
         diff_body_vel_dist = (velocity_diff**2).mean(dim=-1).mean(dim=-1)
@@ -713,15 +729,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ref_obj_points = torch_utils.quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
 
         len_keypos = len(self.key_Bodies_indices)
-        self.ig = self.simulator._rigid_body_pos[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - obj_points.unsqueeze(1)
-        self.ref_ig = self.ref_body_pos_extend[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - ref_obj_points.unsqueeze(1)
+        ig = self.simulator._rigid_body_pos[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - obj_points.unsqueeze(1)
+        ref_ig = self.ref_body_pos_extend[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - ref_obj_points.unsqueeze(1)
         ### interaction graph reward ###
-        weight_1 = (1 / torch.clamp((self.ig**2).sum(dim=-1), min=0.01))
+        weight_1 = (1 / torch.clamp((ig**2).sum(dim=-1), min=0.01))
         weight_1 = weight_1 / weight_1.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
-        weight_2 = (1 / torch.clamp((self.ref_ig**2).sum(dim=-1), min=0.01))
+        weight_2 = (1 / torch.clamp((ref_ig**2).sum(dim=-1), min=0.01))
         weight_2 = weight_2 / weight_2.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
 
-        eig = ((self.ig - self.ref_ig)**2).sum(dim=-1) * (weight_1 + weight_2)  
+        eig = ((ig - ref_ig)**2).sum(dim=-1) * (weight_1 + weight_2)  
 
         rig = torch.exp(-(eig.sum(dim=-1).sum(dim=-1) * 0.5) / self.config.rewards.reward_tracking_sigma.teleop_interation_graph)
 
