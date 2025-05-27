@@ -4,10 +4,18 @@ defaults:
   - robot_base
 
 robot:
+  hybrid_control_mode: False
+  hybrid_control:  
+    control_mode: "EFFORT_MODE" #POS_MODE
+    hand_open_dof: ['left_wrist_roll_joint', 'left_wrist_pitch_joint', 'left_wrist_yaw_joint', 'left_hand_index_0_joint', 'left_hand_index_1_joint', 'left_hand_middle_0_joint', 
+              'left_hand_middle_1_joint', 'left_hand_thumb_0_joint', 'left_hand_thumb_1_joint', 'left_hand_thumb_2_joint','right_wrist_roll_joint', 'right_wrist_pitch_joint', 'right_wrist_yaw_joint', 'right_hand_index_0_joint', 'right_hand_index_1_joint', 'right_hand_middle_0_joint', 
+              'right_hand_middle_1_joint', 'right_hand_thumb_0_joint', 'right_hand_thumb_1_joint', 'right_hand_thumb_2_joint'] # 20 hand dims for open loop control\
+    ppo_actions_dim: 23
   # Observation parameters
   num_bodies: 24
   dof_obs_size: 23
   actions_dim: 23
+  motion_num: 4
   lower_body_actions_dim: 15 # Yuanhang
   upper_body_actions_dim: 8 # Yuanhang
   policy_obs_dim: -1 # Jiawei

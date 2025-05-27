@@ -215,9 +215,10 @@ class BaseTask():
         self.left_hand_indices = torch.zeros(len(left_hand_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(left_hand_names)):
             self.left_hand_indices[i] = self.simulator.find_rigid_body_indice(left_hand_names[i])
-
-        self.open_dof_indices = [self.dof_names.index(dof) for dof in self.open_dof_name_list]
-        print("Open Dof Indices:", self.open_dof_indices)
+            
+        if self.config.robot.hybrid_control_mode:
+            self.open_dof_indices = [self.dof_names.index(dof) for dof in self.open_dof_name_list]
+            print("Open Dof Indices:", self.open_dof_indices)
 
         self.contact_Bodies_indices = torch.zeros(len(self.contact_Bodies), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(self.contact_Bodies)):

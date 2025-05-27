@@ -19,6 +19,7 @@ robot:
   upper_body_actions_dim: 28 # Yuanhang
   policy_obs_dim: -1 # Jiawei
   critic_obs_dim: -1
+  motion_num: 4
   # policy_obs_dim: 45 # Jiawei
   # critic_obs_dim: 238
   # policy_obs_dim: 45 # Jiawei
@@ -26,7 +27,7 @@ robot:
   # self_obs_max_coords: 298  # ${eval:1+20*(3+6+3+3)-3}
 
   key_bodies: ["left_ankle_roll_link", "right_ankle_roll_link"]
-  key_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
+  key_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link',               'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
   contact_bodies: [ "left_ankle_roll_link", "right_ankle_roll_link" ]
   contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
   left_hand_name: ["left_wrist_yaw_link", "left_hand_index_1_link", "left_hand_middle_1_link", "left_hand_thumb_2_link"]
@@ -317,7 +318,7 @@ robot:
     left_foot_name: 'l_foot_roll'
 
 
-    nums_extend_bodies: 1
+    nums_extend_bodies: 3
     extend_config:
       - joint_name: "left_hand_link"
         parent_name: "left_elbow_link"
@@ -336,10 +337,10 @@ robot:
     motion_tracking_link:
       - "left_hand_link"
       - "right_hand_link"
-      - "left_elbow_link"
-      - "right_elbow_link"
-      - "left_shoulder_yaw_link"
-      - "right_shoulder_yaw_link"
+      # - "left_elbow_link"
+      # - "right_elbow_link"
+      # - "left_shoulder_yaw_link"
+      # - "right_shoulder_yaw_link"
       - "head_link"
 
     lower_body_link:

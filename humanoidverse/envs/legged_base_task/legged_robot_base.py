@@ -936,7 +936,10 @@ class LeggedRobotBase(BaseTask):
         # ref_ig_cp = ref_ig.view(self.num_envs, -1)
 
         ref_ig = self.ref_ig.view(self.num_envs, -1, 3)
-        ref_key_ig = torch.cat((ref_ig[:,:7,:], ref_ig[:,8:,:]), dim=1).view(self.num_envs, -1)    # (Env, 19*3)
+        if self.config.robot.actions_dim == 23:
+            ref_key_ig = torch.cat((ref_ig[:,:7,:], ref_ig[:,8:10,:],ref_ig[:,14:16,:]), dim=1).view(self.num_envs, -1)    # (Env, 19*3)
+        elif self.config.robot.actions_dim == 43:
+            ref_key_ig = torch.cat((ref_ig[:,:7,:], ref_ig[:,8:,:]), dim=1).view(self.num_envs, -1)    # (Env, 19*3)
         return torch.cat((ig_all,ref_key_ig-ig),dim=-1)
     
     def _get_obs_history(self,):

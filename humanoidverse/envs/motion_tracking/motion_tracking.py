@@ -99,6 +99,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.motion_start_idx = 0
         self.num_motions = self._motion_lib._num_unique_motions
         self.data_id = torch_utils.to_torch([torch.where(self.simulator.obj2motion[i % len(self.simulator.object_name)] == 1)[0][torch.randint(self.simulator.obj2motion[i % len(self.simulator.object_name)].sum(), ())] for i in range(self.num_envs)], device=self.device, dtype=torch.long)
+        self.motions_phase = torch.zeros(self.num_envs, len(self.simulator.object_name), dtype=torch.float, device=self.device, requires_grad=False)
+        self.motion_indices = torch.arange(self.num_envs) % 4
 
     def _init_tracking_config(self):
         if "motion_tracking_link" in self.config.robot.motion:
@@ -356,15 +358,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         heading_inv_rot_vr = heading_inv_rot.repeat(len(self.motion_tracking_id),1)
         self._obs_vr_3point_pos = my_quat_rotate(heading_inv_rot_vr.view(-1, 4), vr_2root_pos.view(-1, 3)).view(env_batch_size, -1)
         #################### Deepmimic phase ###################### 
-
         self._ref_motion_length = self._motion_lib.get_motion_length(self.motion_ids)
-        self._ref_motion_phase = motion_times / self._ref_motion_length
-        if not (torch.all(self._ref_motion_phase >= 0) and torch.all(self._ref_motion_phase <= 1.05)): # hard coded 1.05 because +1 will exceed 1
-            max_phase = self._ref_motion_phase.max()
-            # import ipdb; ipdb.set_trace()
-        self._ref_motion_phase = self._ref_motion_phase.unsqueeze(1)
-        # print(f"ref_motion_phase: {self._ref_motion_phase[0].item():.2f}")
-        # print(f"ref_motion_length: {self._ref_motion_length[0].item():.2f}")
+
+        self._ref_motion_phase = (motion_times / self._ref_motion_length) #(Env,)
+        self.motions_phase[np.arange(self.num_envs), self.motion_indices] = self._ref_motion_phase + 1 # +1 for larger value, (Env, num_motions)
+        #self.motions_phase = (motion_times / self._ref_motion_length).unsqueeze(1) #(Env,)
 
         ################### Obj data #############################
         local_tar_root_pos = self.simulator.tar_root_states[:, :3].view(env_batch_size, -1, 3) - self.simulator.robot_root_states[:, :3].view(env_batch_size, 1, 3)
@@ -521,9 +519,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
         self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
 
-    # def _physics_step(self):
-    #     super()._physics_step(self.ref_joint_pos)
-
 
     def _post_physics_step(self):
         super()._post_physics_step()
@@ -593,7 +588,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     
     def _get_obs_ref_motion_phase(self):
         # print(self._ref_motion_phase)
-        return self._ref_motion_phase
+        return self.motions_phase
     
     def _get_obs_vr_3point_pos(self):
         return self._obs_vr_3point_pos
