@@ -1,6 +1,6 @@
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-python python -m debugpy --listen 5677 --wait-for-client humanoidverse/train_agent.py \
+python humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
 +domain_rand=NO_domain_rand \
@@ -22,4 +22,5 @@ env.config.termination_curriculum.terminate_when_motion_far_threshold_max=0.5 \
 env.config.termination_curriculum.terminate_when_motion_far_initial_threshold=0.45 \
 env.config.termination_curriculum.terminate_when_motion_far_curriculum_degree=0.000025 \
 robot.asset.self_collisions=0 \
+robot.hybrid_control_mode=False \
 headless=True

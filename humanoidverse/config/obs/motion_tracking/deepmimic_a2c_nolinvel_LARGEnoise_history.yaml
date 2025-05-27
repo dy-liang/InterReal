@@ -9,10 +9,11 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      tar_pos,
+      local_tar_pos,
+      local_tar_vel,
       tar_rot,
-      key_robot_contact,
-      ig,
+      #key_robot_contact,
+      #ig,
       ref_motion_phase,
       # dif_local_rigid_body_pos,
       # local_ref_rigid_body_pos,
@@ -27,7 +28,8 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      tar_pos,
+      local_tar_pos,
+      local_tar_vel,
       tar_rot,
       key_robot_contact,
       ig,
@@ -45,10 +47,11 @@ obs:
       dof_pos: 3,
       dof_vel: 3,
       actions: 3,
-      tar_pos: 3,
+      local_tar_pos: 3,
+      local_tar_vel: 3,
       tar_rot: 3,
-      ig: 3,
-      key_robot_contact: 3,
+      #ig: 3,
+      #key_robot_contact: 3,
       ref_motion_phase: 3
     }
 
@@ -59,10 +62,11 @@ obs:
       dof_pos: 3,
       dof_vel: 3,
       actions: 3,
-      tar_pos: 3,
+      local_tar_pos: 3,
+      local_tar_vel: 3,
       tar_rot: 3,
-      key_robot_contact: 3,
-      ig: 3,
+      key_robot_contact: 1,
+      ig: 1,
       ref_motion_phase: 3
     }
 
@@ -73,8 +77,9 @@ obs:
     dof_pos: 1.0,
     dof_vel: 0.05,
     actions: 1.0,
-    tar_pos: 1,
-    tar_rot: 1,
+    local_tar_pos: 1.0,
+    tar_rot: 1.0,
+    local_tar_vel: 1.0,
     key_robot_contact: 1,
     ig: 1,
     dif_local_rigid_body_pos: 1.0,
@@ -91,8 +96,9 @@ obs:
     dof_pos: 0.01,
     dof_vel: 1.0,
     actions: 0.0,
-    tar_pos: 0.0,
+    local_tar_pos: 0.0,
     tar_rot: 0.0,
+    local_tar_vel: 0.0,
     key_robot_contact: 0.0,
     ig: 0.0,
     dif_local_rigid_body_pos: 0.0,
@@ -116,13 +122,14 @@ obs:
     - projected_gravity: 3
     - dof_pos: ${robot.dof_obs_size}
     - dof_vel: ${robot.dof_obs_size}
-    - actions: ${robot.dof_obs_size}
-    - tar_pos: 3
+    - actions: ${robot.hybrid_control.ppo_actions_dim}
+    - local_tar_pos: 3
+    - local_tar_vel: 3
     - tar_rot: 4
     - key_robot_contact: 19
     - ig: 189
-    - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*1'} # hardcoded for 3 extended body
-    - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*1'}
-    - ref_motion_phase: 1
+    - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'} # hardcoded for 3 extended body
+    - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+    - ref_motion_phase: ${robot.motion_num}
 
   post_compute_config: {} # Will store values after preprocessing, don't put anything here

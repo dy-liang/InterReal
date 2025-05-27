@@ -43,5 +43,5 @@ algo:
         output_dim: [1]
         layer_config:
           type: MLP
-          hidden_dims: [1024, 512, 256]
+          hidden_dims: [1024, 1024, 256]
           activation: ELU
