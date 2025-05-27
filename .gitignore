@@ -32,7 +32,7 @@ Thumbs.db
 # logs
 logs
 logs_eval
-pre_train
+#pre_train
 runs
 outputs
 results/
@@ -58,7 +58,7 @@ roboverse/data/Recorded/
 roboverse/data/AMASS/
 AMASS/*
 
-*.sh
+#*.sh
 *.txt
 
 eval_g129dof_checkpoints
