@@ -925,6 +925,7 @@ class LeggedRobotBase(BaseTask):
         ig = ig_all[:,self.key_Bodies_indices,:].view(self.num_envs, -1)
         ig_all = ig_all.view(self.num_envs, -1)                   # Env, 44*3
 
+        ##### comput ig ####### TODO: some bug
         # ref_obj_rot_extend = self.ref_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
         # ref_obj_points = quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
         # ref_ig = compute_sdf(self.ref_body_pos_extend[:,self.key_Bodies_indices], ref_obj_points).view(-1, 3) # body_pos-torch.Size([256, 19, 3])
@@ -933,9 +934,9 @@ class LeggedRobotBase(BaseTask):
         # ref_ig = quat_rotate(ref_heading_rot_extend, ref_ig).view(self.num_envs, -1, 3)     
         # ref_ig_norm = ref_ig.norm(dim=-1, keepdim=True)
         # ref_ig = ref_ig / (ref_ig_norm + 1e-6) * (-5 * ref_ig_norm).exp()  
-        # ref_ig_cp = ref_ig.view(self.num_envs, -1)
+        # ref_ig = ref_ig.view(self.num_envs, -1)
 
-        ref_ig = self.ref_ig.view(self.num_envs, -1, 3)
+        ref_ig = self.ref_ig.view(self.num_envs, -1, 3)  
         ref_key_ig = torch.cat((ref_ig[:,:7,:], ref_ig[:,8:,:]), dim=1).view(self.num_envs, -1)    # (Env, 19*3)
         return torch.cat((ig_all,ref_key_ig-ig),dim=-1)
     
