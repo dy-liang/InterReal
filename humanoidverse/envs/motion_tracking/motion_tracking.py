@@ -137,6 +137,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             
             self.ref_body_pos_extend = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
             self.dif_global_body_pos = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+            self.dif_global_tar_pos = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
 
     def _init_adaptive_sigma(self):
         if not 'adaptive_tracking_sigma' in self.config.rewards or not self.config.rewards.adaptive_tracking_sigma.enable:
@@ -201,8 +202,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     def _check_termination(self):
         super()._check_termination()
         if self.config.termination.terminate_when_motion_far:
-            reset_buf_motion_far = torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
-            self.reset_buf |= reset_buf_motion_far
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
             # log current motion far threshold
             if self.config.termination_curriculum.terminate_when_motion_far_curriculum:
                 self.log_dict["terminate_when_motion_far_threshold"] = torch.tensor(self.terminate_when_motion_far_threshold, dtype=torch.float)
@@ -374,6 +375,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._obs_local_tar_vel = local_tar_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
 
 
+        self.dif_global_tar_pos = (self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3]).view(env_batch_size, -1, 3) # [num_envs,1, 3]
 
         self._log_motion_tracking_info()
 
