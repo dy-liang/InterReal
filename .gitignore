@@ -81,3 +81,5 @@ osmocheckpoints
 
 ./scripts/batch_eval
 ./scripts/batch_osmo_scp
+
+deploy/

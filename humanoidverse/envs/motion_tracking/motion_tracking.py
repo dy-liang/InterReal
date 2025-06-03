@@ -58,10 +58,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.terminate_when_motion_far_threshold = self.config.termination_scales.termination_motion_far_threshold
             logger.info(f"Terminate when motion far threshold: {self.terminate_when_motion_far_threshold}")
 
-
-
-        
-
     def teleop_callback(self, msg):
         self.teleop_marker_coords = torch.tensor(msg.data, device=self.device)
 
@@ -137,6 +133,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             
             self.ref_body_pos_extend = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
             self.dif_global_body_pos = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+            self.dif_global_tar_pos = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
 
     def _init_adaptive_sigma(self):
         if not 'adaptive_tracking_sigma' in self.config.rewards or not self.config.rewards.adaptive_tracking_sigma.enable:
@@ -201,8 +198,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     def _check_termination(self):
         super()._check_termination()
         if self.config.termination.terminate_when_motion_far:
-            reset_buf_motion_far = torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
-            self.reset_buf |= reset_buf_motion_far
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
             # log current motion far threshold
             if self.config.termination_curriculum.terminate_when_motion_far_curriculum:
                 self.log_dict["terminate_when_motion_far_threshold"] = torch.tensor(self.terminate_when_motion_far_threshold, dtype=torch.float)
@@ -231,12 +228,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         else:
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
-
-        # self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-        # offset = self.env_origins
-        # motion_times = (self.episode_length_buf ) * self.dt + self.motion_start_times # next frames so +1
-        # # motion_res = self._get_state_from_motionlib_cache(self.motion_ids, motion_times, offset= offset)
-        # motion_res = self._get_state_from_motionlib_cache_trimesh(self.motion_ids, motion_times, offset= offset)
 
     def resample_motion(self):
         self._motion_lib.load_motions(random_sample=True)
@@ -374,6 +365,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._obs_local_tar_vel = local_tar_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
 
 
+        self.dif_global_tar_pos = (self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3]).view(env_batch_size, -1, 3) # [num_envs,1, 3]
 
         self._log_motion_tracking_info()
 
@@ -736,6 +728,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         rig = torch.exp(-(eig.sum(dim=-1).sum(dim=-1) * 0.5) / self.config.rewards.reward_tracking_sigma.teleop_interation_graph)
 
+        # TODO ig reset
         # reset_ig_1 = (((self.ig - self.ref_ig)**2).sum(dim=-1).sqrt() / torch.clamp((self.ref_ig**2).sum(dim=-1).sqrt(), min=0.5)).max(dim=-1)[0].max(dim=-1)[0] > 2
         # reset_ig_2 = (((self.ig - self.ref_ig)**2).sum(dim=-1).sqrt() / torch.clamp((self.ig**2).sum(dim=-1).sqrt(), min=0.5)).max(dim=-1)[0].max(dim=-1)[0] > 2
         # reset_ig = torch.logical_or(reset_ig_1, reset_ig_2)        
@@ -794,7 +787,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         contact_all = self.simulator.contact_forces.clone().abs().sum(dim=-1).sum(dim=-1)
         contact_energy = contact_all.pow(2).mul(-0.000000005).exp()
 
-        rcg = rcg_hand #+ rcg_other + rcg_all  #+ contact_energy
+        rcg = rcg_hand #+ rcg_other + rcg_all  #+ contact_energy # TODO
 
         self._update_adaptive_sigma(ecg_right, 'teleop_hand_contact')
 
