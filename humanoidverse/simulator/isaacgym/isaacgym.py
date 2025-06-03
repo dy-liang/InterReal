@@ -289,9 +289,10 @@ class IsaacGym(BaseSimulator):
 
     def _build_each_env(self, env_id, env_ptr):
         start_pose = gymapi.Transform()
-        # start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
-        # pos = self.env_origins[env_id].clone()
-        # pos[:2] += torch_rand_float(-1., 1., (2, 1), device=str(self.device)).squeeze(1) 
+
+        # pos = self.env_origins[env_id].clone()  # Add noise here, do not affect the ppo training
+        # self.pos_noise = torch_rand_float(-1., 1., (2, 1), device=str(self.device)).squeeze(1)
+        # pos[:2] += self.pos_noise
         # start_pose.p = gymapi.Vec3(*pos)
 
         char_h = 0.8
@@ -326,12 +327,9 @@ class IsaacGym(BaseSimulator):
         segmentation_id = 0
 
         start_pose = gymapi.Transform()
-        # start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
-        # pos = self.env_origins[env_id].clone()
-        # #pos[:2] += torch_rand_float(-1., 1., (2, 1), device=str(self.device)).squeeze(1)
+        # pos = self.env_origins[env_id].clone()  # Add noise here, do not affect the ppo training
+        # pos[:2] += self.pos_noise
         # start_pose.p = gymapi.Vec3(*pos)
-
-
 
         target_handle = self.gym.create_actor(env_ptr, self._target_asset[env_id % len(self.object_name)], start_pose, self.object_name[env_id % len(self.object_name)], col_group, col_filter, segmentation_id)
 
