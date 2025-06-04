@@ -79,7 +79,7 @@ obs:
     actions: 1.0,
     local_tar_pos: 1.0,
     tar_rot: 1.0,
-    local_tar_vel: 0.05, # 1.0
+    local_tar_vel: 1.0, # 1.0 0.05
     key_robot_contact: 1,
     ig: 1,
     dif_local_rigid_body_pos: 1.0,
@@ -96,8 +96,8 @@ obs:
     dof_pos: 0.01,
     dof_vel: 1.0,
     actions: 0.0,
-    local_tar_pos: 0.01, #0.0, add noise
-    tar_rot: 0.01,       #0.0, add noise
+    local_tar_pos: 0.1, #0.0, 0.01 add noise
+    tar_rot: 0.1,       #0.0, 0.01 add noise
     local_tar_vel: 1.0, #0.0, add noise 
     key_robot_contact: 0.0,
     ig: 0.0,
