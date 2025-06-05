@@ -11,7 +11,7 @@ obs:
       actions,
       local_tar_pos,
       local_tar_vel,
-      #tar_rot,
+      tar_rot,
       #key_robot_contact,
       #ig,
       ref_motion_phase,
@@ -49,7 +49,7 @@ obs:
       actions: 3,
       local_tar_pos: 3,
       local_tar_vel: 3,
-      #tar_rot: 3,
+      tar_rot: 3,
       #ig: 3,
       #key_robot_contact: 3,
       ref_motion_phase: 3
