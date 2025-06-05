@@ -1489,11 +1489,11 @@ obs:
     - local_tar_pos
     - local_tar_vel
     - tar_rot
-    - key_robot_contact
-    - ig
+    #- key_robot_contact
+    #- ig
     - ref_motion_phase
-    - dif_local_rigid_body_pos
-    - local_ref_rigid_body_pos
+    #- dif_local_rigid_body_pos
+    #- local_ref_rigid_body_pos
     - history_critic
   obs_auxiliary:
     history_actor:
@@ -1516,8 +1516,8 @@ obs:
       local_tar_pos: 3
       local_tar_vel: 3
       tar_rot: 3
-      key_robot_contact: 1
-      ig: 1
+      #key_robot_contact: 1
+      #ig: 1
       ref_motion_phase: 3
   obs_scales:
     base_lin_vel: 2.0
@@ -1570,9 +1570,9 @@ obs:
   - local_tar_pos: 3
   - local_tar_vel: 3
   - tar_rot: 4
-  - key_robot_contact: 19
-  - ig: 189
-  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
-  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
-  - ref_motion_phase: ${robot.motion_num}
+  #- key_robot_contact: 19
+  #- ig: 189
+  #- dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  #- local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  - ref_motion_phase: 1 #${robot.motion_num}
   post_compute_config: {}

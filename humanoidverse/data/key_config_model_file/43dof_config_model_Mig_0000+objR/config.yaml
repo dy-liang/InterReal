@@ -296,10 +296,10 @@ robot:
     urdf_file: g1/${robot.asset.robot_type}.urdf
     usd_file: g1/${robot.asset.robot_type}.usd
     xml_file: g1/${robot.asset.robot_type}.xml
-    asset_root: /home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/robots
+    asset_root: humanoidverse/data/robots
     self_collisions: 0
     filter_ints: null
-    asset_obj_root: /home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/objects/
+    asset_obj_root: humanoidverse/data/objects/
   hybrid_control_mode: true
   hybrid_control:
     control_mode: EFFORT_MODE
@@ -789,9 +789,9 @@ robot:
   - shoulder
   - hip
   motion:
-    motion_file: /home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl
+    motion_file: humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl
     asset:
-      assetRoot: /home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/robots/g1/
+      assetRoot: humanoidverse/data/robots/g1/
       assetFileName: g1_29dof_with_hand.xml
       urdfFileName: g1_29dof_with_hand.urdf
     humanoid_type: g1_29dof_with_hand
@@ -1489,11 +1489,11 @@ obs:
     - local_tar_pos
     - local_tar_vel
     - tar_rot
-    #- key_robot_contact
-    #- ig
+    - key_robot_contact
+    - ig
     - ref_motion_phase
-    #- dif_local_rigid_body_pos
-    #- local_ref_rigid_body_pos
+    - dif_local_rigid_body_pos
+    - local_ref_rigid_body_pos
     - history_critic
   obs_auxiliary:
     history_actor:
@@ -1516,8 +1516,8 @@ obs:
       local_tar_pos: 3
       local_tar_vel: 3
       tar_rot: 3
-      #key_robot_contact: 1
-      #ig: 1
+      key_robot_contact: 1
+      ig: 1
       ref_motion_phase: 3
   obs_scales:
     base_lin_vel: 2.0
@@ -1570,9 +1570,9 @@ obs:
   - local_tar_pos: 3
   - local_tar_vel: 3
   - tar_rot: 4
-  #- key_robot_contact: 19
-  #- ig: 189
-  #- dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
-  #- local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  - key_robot_contact: 19
+  - ig: 189
+  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
   - ref_motion_phase: ${robot.motion_num}
   post_compute_config: {}

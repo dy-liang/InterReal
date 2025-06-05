@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
+import copy
 from humanoidverse.agents.modules.ppo_modules import PPOActor, PPOCritic
 from humanoidverse.agents.modules.data_utils import RolloutStorage
 from humanoidverse.envs.base_task.base_task import BaseTask
@@ -68,6 +68,9 @@ class PPO(BaseAlgo):
         # Logging related Config
 
         self.save_interval = self.config.save_interval
+        self.save_jit_model = self.config.save_jit_model
+        self.save_model = self.config.save_model
+
         # Training related Config
         self.num_steps_per_env = self.config.num_steps_per_env
         self.load_optimizer = self.config.load_optimizer
@@ -156,16 +159,22 @@ class PPO(BaseAlgo):
             self.current_learning_iteration = loaded_dict["iter"]
             return loaded_dict["infos"]
 
-    def save(self, path, infos=None):
-        logger.info(f"Saving checkpoint to {path}")
-        torch.save({
-            'actor_model_state_dict': self.actor.state_dict(),
-            'critic_model_state_dict': self.critic.state_dict(),
-            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
-            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
-            'iter': self.current_learning_iteration,
-            'infos': infos,
-        }, path)
+    def save(self, path, path_jit, infos=None):
+        if self.save_model:
+            logger.info(f"Saving checkpoint to {path}")
+            torch.save({
+                'actor_model_state_dict': self.actor.state_dict(),
+                'critic_model_state_dict': self.critic.state_dict(),
+                'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+                'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+                'iter': self.current_learning_iteration,
+                'infos': infos,
+            }, path)
+        if self.save_jit_model:
+            logger.info(f'Saving jit policy to {path_jit}')
+            model = copy.deepcopy(self.actor.actor).to('cpu')
+            traced_script_module = torch.jit.script(model)
+            traced_script_module.save(path_jit)
         
     def learn(self):
         if self.init_at_random_ep_len:
@@ -208,7 +217,7 @@ class PPO(BaseAlgo):
             }
             self._post_epoch_logging(log_dict)
             if it % self.save_interval == 0:
-                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
+                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)),os.path.join(self.log_dir, 'jit_model_{}.pt'.format(it)))
             self.ep_infos.clear()
         
         self.current_learning_iteration += num_learning_iterations
