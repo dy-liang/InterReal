@@ -1,4 +1,3 @@
-##### checkout to the branch "hois_23/43dof_v2" first #####
 seed: 0
 codebase_version: 1.0
 headless: true
@@ -6,7 +5,7 @@ num_envs: 4096
 auto_load_latest: false
 checkpoint: null
 project_name: MotionTracking
-experiment_name: Start_MultiTask_OriginEP_23Dof_TrackID_bigPD
+experiment_name: Start_43Dof_MultiTask_OpenHand_PDv4_NewRewObs_Moig+noTrackElbowShouder+TaskID+TaskPhase_ObjR_noNoise_RStart
 base_dir: logs
 timestamp: ${now:%Y%m%d_%H%M%S}
 experiment_dir: ${base_dir}/${project_name}/${timestamp}-${experiment_name}-${log_task_name}-${robot.asset.robot_type}
@@ -44,6 +43,8 @@ algo:
     desired_kl: 0.01
     num_steps_per_env: 24
     save_interval: 100
+    save_jit_model: True
+    save_model: True
     load_optimizer: true
     init_noise_std: 0.8
     num_learning_iterations: 1000000
@@ -58,9 +59,9 @@ algo:
         layer_config:
           type: MLP
           hidden_dims:
+          - 1024
           - 512
           - 256
-          - 128
           activation: ELU
       critic:
         type: MLP
@@ -71,9 +72,9 @@ algo:
         layer_config:
           type: MLP
           hidden_dims:
-          - 512
+          - 1024
+          - 1024
           - 256
-          - 128
           activation: ELU
 env:
   _target_: humanoidverse.envs.motion_tracking.motion_tracking.LeggedRobotMotionTracking
@@ -137,10 +138,10 @@ env:
     use_teleop_control: false
     enforce_randomize_motion_start_eval: false
 robot:
-  dof_obs_size: 23
+  dof_obs_size: 43
   number_of_actions: ???
   self_obs_max_coords: ???
-  num_bodies: 24
+  num_bodies: 44
   algo_obs_dim_dict: ???
   key_bodies:
   - left_ankle_roll_link
@@ -187,10 +188,30 @@ robot:
       left_shoulder_roll_joint: 0.0
       left_shoulder_yaw_joint: 0.0
       left_elbow_joint: 0.0
+      left_wrist_roll_joint: 0.0
+      left_wrist_pitch_joint: 0.0
+      left_wrist_yaw_joint: 0.0
+      left_hand_index_0_joint: 0.0
+      left_hand_index_1_joint: 0.0
+      left_hand_middle_0_joint: 0.0
+      left_hand_middle_1_joint: 0.0
+      left_hand_thumb_0_joint: 0.0
+      left_hand_thumb_1_joint: 0.0
+      left_hand_thumb_2_joint: 0.0
       right_shoulder_pitch_joint: 0.0
       right_shoulder_roll_joint: 0.0
       right_shoulder_yaw_joint: 0.0
       right_elbow_joint: 0.0
+      right_wrist_roll_joint: 0.0
+      right_wrist_pitch_joint: 0.0
+      right_wrist_yaw_joint: 0.0
+      right_hand_index_0_joint: 0.0
+      right_hand_index_1_joint: 0.0
+      right_hand_middle_0_joint: 0.0
+      right_hand_middle_1_joint: 0.0
+      right_hand_thumb_0_joint: 0.0
+      right_hand_thumb_1_joint: 0.0
+      right_hand_thumb_2_joint: 0.0
   contact_pairs_multiplier: 16
   num_key_bodies: ${len:${robot.key_bodies}}
   mimic_small_marker_bodies: null
@@ -220,6 +241,16 @@ robot:
       shoulder_roll: 100
       shoulder_yaw: 50
       elbow: 50
+      wrist_roll: 40
+      wrist_pitch: 8
+      wrist_yaw: 8
+      hand_index_0: 2
+      hand_index_1: 2
+      hand_middle_0: 2
+      hand_middle_1: 2
+      hand_thumb_0: 2
+      hand_thumb_1: 2
+      hand_thumb_2: 2
     damping:
       hip_yaw: 2.0
       hip_roll: 2.0
@@ -234,6 +265,16 @@ robot:
       shoulder_roll: 2.0
       shoulder_yaw: 2.0
       elbow: 2.0
+      wrist_roll: 1.5
+      wrist_pitch: 0.5
+      wrist_yaw: 0.5
+      hand_index_0: 0.1
+      hand_index_1: 0.1
+      hand_middle_0: 0.1
+      hand_middle_1: 0.1
+      hand_thumb_0: 0.1
+      hand_thumb_1: 0.1
+      hand_thumb_2: 0.1
     action_scale: 0.25
     isaac_pd_scale: false
     clamp_actions: 1.0
@@ -253,7 +294,7 @@ robot:
     disable_gravity: null
     fix_base_link: false
     default_dof_drive_mode: 3
-    robot_type: g1_29dof_anneal_23dof
+    robot_type: g1_29dof_with_hand
     urdf_file: g1/${robot.asset.robot_type}.urdf
     usd_file: g1/${robot.asset.robot_type}.usd
     xml_file: g1/${robot.asset.robot_type}.xml
@@ -261,11 +302,37 @@ robot:
     self_collisions: 0
     filter_ints: null
     asset_obj_root: humanoidverse/data/objects/
-  actions_dim: 23
+  hybrid_control_mode: true
+  hybrid_control:
+    control_mode: EFFORT_MODE
+    hand_open_dof:
+    - left_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - left_hand_index_0_joint
+    - left_hand_index_1_joint
+    - left_hand_middle_0_joint
+    - left_hand_middle_1_joint
+    - left_hand_thumb_0_joint
+    - left_hand_thumb_1_joint
+    - left_hand_thumb_2_joint
+    - right_wrist_roll_joint
+    - right_wrist_pitch_joint
+    - right_wrist_yaw_joint
+    - right_hand_index_0_joint
+    - right_hand_index_1_joint
+    - right_hand_middle_0_joint
+    - right_hand_middle_1_joint
+    - right_hand_thumb_0_joint
+    - right_hand_thumb_1_joint
+    - right_hand_thumb_2_joint
+    ppo_actions_dim: 23
+  actions_dim: 43
   lower_body_actions_dim: 15
-  upper_body_actions_dim: 8
+  upper_body_actions_dim: 28
   policy_obs_dim: -1
   critic_obs_dim: -1
+  motion_num: 4
   key_Bodies:
   - left_hip_yaw_link
   - left_knee_link
@@ -276,8 +343,16 @@ robot:
   - torso_link
   - left_shoulder_yaw_link
   - left_elbow_link
+  - left_wrist_yaw_link
+  - left_hand_index_1_link
+  - left_hand_middle_1_link
+  - left_hand_thumb_2_link
   - right_shoulder_yaw_link
   - right_elbow_link
+  - right_wrist_yaw_link
+  - right_hand_index_1_link
+  - right_hand_middle_1_link
+  - right_hand_thumb_2_link
   contact_Bodies:
   - left_hip_yaw_link
   - left_knee_link
@@ -288,12 +363,26 @@ robot:
   - torso_link
   - left_shoulder_yaw_link
   - left_elbow_link
+  - left_wrist_yaw_link
+  - left_hand_index_1_link
+  - left_hand_middle_1_link
+  - left_hand_thumb_2_link
   - right_shoulder_yaw_link
   - right_elbow_link
+  - right_wrist_yaw_link
+  - right_hand_index_1_link
+  - right_hand_middle_1_link
+  - right_hand_thumb_2_link
   left_hand_name:
   - left_wrist_yaw_link
+  - left_hand_index_1_link
+  - left_hand_middle_1_link
+  - left_hand_thumb_2_link
   right_hand_name:
   - right_wrist_yaw_link
+  - right_hand_index_1_link
+  - right_hand_middle_1_link
+  - right_hand_thumb_2_link
   num_feet: 2
   right_foot_name: right_ankle_roll_link
   left_foot_name: left_ankle_roll_link
@@ -321,29 +410,89 @@ robot:
   - left_shoulder_roll_joint
   - left_shoulder_yaw_joint
   - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - left_hand_index_0_joint
+  - left_hand_index_1_joint
+  - left_hand_middle_0_joint
+  - left_hand_middle_1_joint
+  - left_hand_thumb_0_joint
+  - left_hand_thumb_1_joint
+  - left_hand_thumb_2_joint
   - right_shoulder_pitch_joint
   - right_shoulder_roll_joint
   - right_shoulder_yaw_joint
   - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+  - right_hand_index_0_joint
+  - right_hand_index_1_joint
+  - right_hand_middle_0_joint
+  - right_hand_middle_1_joint
+  - right_hand_thumb_0_joint
+  - right_hand_thumb_1_joint
+  - right_hand_thumb_2_joint
   upper_dof_names:
   - left_shoulder_pitch_joint
   - left_shoulder_roll_joint
   - left_shoulder_yaw_joint
   - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - left_hand_index_0_joint
+  - left_hand_index_1_joint
+  - left_hand_middle_0_joint
+  - left_hand_middle_1_joint
+  - left_hand_thumb_0_joint
+  - left_hand_thumb_1_joint
+  - left_hand_thumb_2_joint
   - right_shoulder_pitch_joint
   - right_shoulder_roll_joint
   - right_shoulder_yaw_joint
   - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+  - right_hand_index_0_joint
+  - right_hand_index_1_joint
+  - right_hand_middle_0_joint
+  - right_hand_middle_1_joint
+  - right_hand_thumb_0_joint
+  - right_hand_thumb_1_joint
+  - right_hand_thumb_2_joint
   upper_left_arm_dof_names:
   - left_shoulder_pitch_joint
   - left_shoulder_roll_joint
   - left_shoulder_yaw_joint
   - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - left_hand_index_0_joint
+  - left_hand_index_1_joint
+  - left_hand_middle_0_joint
+  - left_hand_middle_1_joint
+  - left_hand_thumb_0_joint
+  - left_hand_thumb_1_joint
+  - left_hand_thumb_2_joint
   upper_right_arm_dof_names:
   - right_shoulder_pitch_joint
   - right_shoulder_roll_joint
   - right_shoulder_yaw_joint
   - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+  - right_hand_index_0_joint
+  - right_hand_index_1_joint
+  - right_hand_middle_0_joint
+  - right_hand_middle_1_joint
+  - right_hand_thumb_0_joint
+  - right_hand_thumb_1_joint
+  - right_hand_thumb_2_joint
   lower_dof_names:
   - left_hip_pitch_joint
   - left_hip_roll_joint
@@ -384,10 +533,30 @@ robot:
   - -1.5882
   - -2.618
   - -1.0472
+  - -1.9722
+  - -1.6144
+  - -1.6144
+  - -1.5708
+  - -1.7453
+  - -1.5708
+  - -1.7453
+  - -1.0472
+  - -0.7243
+  - 0.0
   - -3.0892
   - -2.2515
   - -2.618
   - -1.0472
+  - -1.9722
+  - -1.6144
+  - -1.6144
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -1.0472
+  - -1.0472
+  - -1.7453
   dof_pos_upper_limit_list:
   - 2.8798
   - 2.9671
@@ -408,10 +577,30 @@ robot:
   - 2.2515
   - 2.618
   - 2.0944
+  - 1.9722
+  - 1.6144
+  - 1.6144
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0472
+  - 1.0472
+  - 1.7453
   - 2.6704
   - 1.5882
   - 2.618
   - 2.0944
+  - 1.9722
+  - 1.6144
+  - 1.6144
+  - 1.5708
+  - 1.7453
+  - 1.5708
+  - 1.7453
+  - 1.0472
+  - 0.7243
+  - 0.0
   dof_vel_limit_list:
   - 32.0
   - 32.0
@@ -433,9 +622,29 @@ robot:
   - 37.0
   - 37.0
   - 37.0
+  - 22.0
+  - 22.0
+  - 12.0
+  - 12.0
+  - 12.0
+  - 12.0
+  - 6.857
+  - 12.0
+  - 12.0
   - 37.0
   - 37.0
   - 37.0
+  - 37.0
+  - 37.0
+  - 22.0
+  - 22.0
+  - 12.0
+  - 12.0
+  - 12.0
+  - 12.0
+  - 6.857
+  - 12.0
+  - 12.0
   dof_effort_limit_list:
   - 88.0
   - 88.0
@@ -457,9 +666,29 @@ robot:
   - 25.0
   - 25.0
   - 25.0
+  - 5.0
+  - 5.0
+  - 1.4
+  - 1.4
+  - 1.4
+  - 1.4
+  - 2.45
+  - 1.4
+  - 1.4
   - 25.0
   - 25.0
   - 25.0
+  - 25.0
+  - 25.0
+  - 5.0
+  - 5.0
+  - 1.4
+  - 1.4
+  - 1.4
+  - 1.4
+  - 2.45
+  - 1.4
+  - 1.4
   dof_armature_list:
   - 0.03
   - 0.03
@@ -529,10 +758,30 @@ robot:
   - left_shoulder_roll_link
   - left_shoulder_yaw_link
   - left_elbow_link
+  - left_wrist_roll_link
+  - left_wrist_pitch_link
+  - left_wrist_yaw_link
+  - left_hand_index_0_link
+  - left_hand_index_1_link
+  - left_hand_middle_0_link
+  - left_hand_middle_1_link
+  - left_hand_thumb_0_link
+  - left_hand_thumb_1_link
+  - left_hand_thumb_2_link
   - right_shoulder_pitch_link
   - right_shoulder_roll_link
   - right_shoulder_yaw_link
   - right_elbow_link
+  - right_wrist_roll_link
+  - right_wrist_pitch_link
+  - right_wrist_yaw_link
+  - right_hand_index_0_link
+  - right_hand_index_1_link
+  - right_hand_middle_0_link
+  - right_hand_middle_1_link
+  - right_hand_thumb_0_link
+  - right_hand_thumb_1_link
+  - right_hand_thumb_2_link
   terminate_after_contacts_on:
   - pelvis
   - shoulder
@@ -542,12 +791,12 @@ robot:
   - shoulder
   - hip
   motion:
-    motion_file: humanoidverse/data/motions/g1_23dof/250523_HOIs_23dof.pkl
+    motion_file: humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl
     asset:
       assetRoot: humanoidverse/data/robots/g1/
-      assetFileName: g1_29dof_anneal_23dof_fitmotionONLY.xml
-      urdfFileName: g1_29dof_anneal_23dof.urdf
-    humanoid_type: g1_29dof_anneal_23dof
+      assetFileName: g1_29dof_with_hand.xml
+      urdfFileName: g1_29dof_with_hand.urdf
+    humanoid_type: g1_29dof_with_hand
     bias_offset: false
     has_self_collision: true
     has_mesh: false
@@ -590,10 +839,30 @@ robot:
     - left_shoulder_roll_link
     - left_shoulder_yaw_link
     - left_elbow_link
+    - left_wrist_roll_link
+    - left_wrist_pitch_link
+    - left_wrist_yaw_link
+    - left_hand_index_0_link
+    - left_hand_index_1_link
+    - left_hand_middle_0_link
+    - left_hand_middle_1_link
+    - left_hand_thumb_0_link
+    - left_hand_thumb_1_link
+    - left_hand_thumb_2_link
     - right_shoulder_pitch_link
     - right_shoulder_roll_link
     - right_shoulder_yaw_link
     - right_elbow_link
+    - right_wrist_roll_link
+    - right_wrist_pitch_link
+    - right_wrist_yaw_link
+    - right_hand_index_0_link
+    - right_hand_index_1_link
+    - right_hand_middle_0_link
+    - right_hand_middle_1_link
+    - right_hand_thumb_0_link
+    - right_hand_thumb_1_link
+    - right_hand_thumb_2_link
     limb_weight_group:
     - - left_hip_pitch_link
       - left_hip_roll_link
@@ -615,34 +884,74 @@ robot:
       - left_shoulder_roll_link
       - left_shoulder_yaw_link
       - left_elbow_link
+      - left_wrist_roll_link
+      - left_wrist_pitch_link
+      - left_wrist_yaw_link
+      - left_hand_index_0_link
+      - left_hand_index_1_link
+      - left_hand_middle_0_link
+      - left_hand_middle_1_link
+      - left_hand_thumb_0_link
+      - left_hand_thumb_1_link
+      - left_hand_thumb_2_link
     - - right_shoulder_pitch_link
       - right_shoulder_roll_link
       - right_shoulder_yaw_link
       - right_elbow_link
+      - right_wrist_roll_link
+      - right_wrist_pitch_link
+      - right_wrist_yaw_link
+      - right_hand_index_0_link
+      - right_hand_index_1_link
+      - right_hand_middle_0_link
+      - right_hand_middle_1_link
+      - right_hand_thumb_0_link
+      - right_hand_thumb_1_link
+      - right_hand_thumb_2_link
     dof_names:
-    - left_hip_pitch_link
-    - left_hip_roll_link
-    - left_hip_yaw_link
-    - left_knee_link
-    - left_ankle_pitch_link
-    - left_ankle_roll_link
-    - right_hip_pitch_link
-    - right_hip_roll_link
-    - right_hip_yaw_link
-    - right_knee_link
-    - right_ankle_pitch_link
-    - right_ankle_roll_link
-    - waist_yaw_link
-    - waist_roll_link
-    - torso_link
-    - left_shoulder_pitch_link
-    - left_shoulder_roll_link
-    - left_shoulder_yaw_link
-    - left_elbow_link
-    - right_shoulder_pitch_link
-    - right_shoulder_roll_link
-    - right_shoulder_yaw_link
-    - right_elbow_link
+    - left_hip_pitch_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+    - right_hip_pitch_joint
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - waist_yaw_joint
+    - waist_roll_joint
+    - waist_pitch_joint
+    - left_shoulder_pitch_joint
+    - left_shoulder_roll_joint
+    - left_shoulder_yaw_joint
+    - left_elbow_joint
+    - left_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - left_hand_index_0_joint
+    - left_hand_index_1_joint
+    - left_hand_middle_0_joint
+    - left_hand_middle_1_joint
+    - left_hand_thumb_0_joint
+    - left_hand_thumb_1_joint
+    - left_hand_thumb_2_joint
+    - right_shoulder_pitch_joint
+    - right_shoulder_roll_joint
+    - right_shoulder_yaw_joint
+    - right_elbow_joint
+    - right_wrist_roll_joint
+    - right_wrist_pitch_joint
+    - right_wrist_yaw_joint
+    - right_hand_index_0_joint
+    - right_hand_index_1_joint
+    - right_hand_middle_0_joint
+    - right_hand_middle_1_joint
+    - right_hand_thumb_0_joint
+    - right_hand_thumb_1_joint
+    - right_hand_thumb_2_joint
     right_foot_name: r_foot_roll
     left_foot_name: l_foot_roll
     nums_extend_bodies: 3
@@ -706,10 +1015,30 @@ robot:
     - left_shoulder_roll_link
     - left_shoulder_yaw_link
     - left_elbow_link
+    - left_wrist_roll_link
+    - left_wrist_pitch_link
+    - left_wrist_yaw_link
+    - left_hand_index_0_link
+    - left_hand_index_1_link
+    - left_hand_middle_0_link
+    - left_hand_middle_1_link
+    - left_hand_thumb_0_link
+    - left_hand_thumb_1_link
+    - left_hand_thumb_2_link
     - right_shoulder_pitch_link
     - right_shoulder_roll_link
     - right_shoulder_yaw_link
     - right_elbow_link
+    - right_wrist_roll_link
+    - right_wrist_pitch_link
+    - right_wrist_yaw_link
+    - right_hand_index_0_link
+    - right_hand_index_1_link
+    - right_hand_middle_0_link
+    - right_hand_middle_1_link
+    - right_hand_thumb_0_link
+    - right_hand_thumb_1_link
+    - right_hand_thumb_2_link
     - left_hand_link
     - right_hand_link
     - head_link
@@ -760,6 +1089,66 @@ robot:
     visualization:
       customize_color: true
       marker_joint_colors:
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
+      - - 0.929
+        - 0.867
+        - 0.437
       - - 0.929
         - 0.867
         - 0.437
@@ -990,8 +1379,8 @@ domain_rand:
   - 180
   born_heading_level_degree: 5.0e-05
 rewards:
-  set_reward: Tairan
-  set_reward_date: 20241025
+  set_reward: dyliang
+  set_reward_date: 20250525
   only_positive_rewards: false
   reward_scales:
     teleop_body_position_extend: 1.0
@@ -1004,20 +1393,16 @@ rewards:
     teleop_joint_velocity: 0.5
     teleop_tar_pos: 1.0
     teleop_tar_rot: 0.5
+    teleop_tar_vel: 1.0
     interation_graph: 2.0
     penalty_torques: -1.0e-06
     penalty_action_rate: -0.5
-    penalty_feet_ori: -2.0
-    feet_heading_alignment: -0.1
     penalty_slippage: -1.0
     limits_dof_pos: -10.0
     limits_dof_vel: -5.0
     limits_torque: -5.0
     termination: -200.0
-  adaptive_tracking_sigma:
-    enable: true
-    alpha: 0.0001
-  teleop_body_pos_lowerbody_weight: 0.5
+  teleop_body_pos_lowerbody_weight: 1.0
   teleop_body_pos_upperbody_weight: 1.0
   desired_feet_max_height_for_this_air: 0.2
   reward_tracking_sigma:
@@ -1033,6 +1418,11 @@ rewards:
     teleop_interation_graph: 0.3
     teleop_tar_pos: 0.3
     teleop_tar_rot: 0.3
+    teleop_tar_vel: 0.3
+    teleop_hand_contact: 0.3
+  adaptive_tracking_sigma:
+    enable: true
+    alpha: 0.0001
   reward_penalty_curriculum: true
   reward_initial_penalty_scale: 0.1
   reward_min_penalty_scale: 0.0
@@ -1049,21 +1439,21 @@ rewards:
       soft_dof_pos_curriculum: true
       soft_dof_pos_initial_limit: 1.15
       soft_dof_pos_max_limit: 1.15
-      soft_dof_pos_min_limit: 0.95
+      soft_dof_pos_min_limit: 1.0
       soft_dof_pos_curriculum_degree: 2.5e-07
       soft_dof_pos_curriculum_level_down_threshold: 40
       soft_dof_pos_curriculum_level_up_threshold: 42
       soft_dof_vel_curriculum: true
       soft_dof_vel_initial_limit: 1.15
       soft_dof_vel_max_limit: 1.25
-      soft_dof_vel_min_limit: 0.95
+      soft_dof_vel_min_limit: 1.0
       soft_dof_vel_curriculum_degree: 2.5e-07
       soft_dof_vel_curriculum_level_down_threshold: 40
       soft_dof_vel_curriculum_level_up_threshold: 42
       soft_torque_curriculum: true
       soft_torque_initial_limit: 1.15
       soft_torque_max_limit: 1.25
-      soft_torque_min_limit: 0.85
+      soft_torque_min_limit: 1.0
       soft_torque_curriculum_degree: 2.5e-07
       soft_torque_curriculum_level_down_threshold: 40
       soft_torque_curriculum_level_up_threshold: 42
@@ -1086,10 +1476,9 @@ obs:
     - dof_pos
     - dof_vel
     - actions
-    - tar_pos
+    - local_tar_pos
+    - local_tar_vel
     - tar_rot
-    - key_robot_contact
-    - ig
     - ref_motion_phase
     - history_actor
     critic_obs:
@@ -1099,7 +1488,8 @@ obs:
     - dof_pos
     - dof_vel
     - actions
-    - tar_pos
+    - local_tar_pos
+    - local_tar_vel
     - tar_rot
     - key_robot_contact
     - ig
@@ -1109,28 +1499,28 @@ obs:
     - history_critic
   obs_auxiliary:
     history_actor:
-      base_ang_vel: 1
-      projected_gravity: 1
-      dof_pos: 1
-      dof_vel: 1
-      actions: 1
-      tar_pos: 1
-      tar_rot: 1
-      ig: 1
-      key_robot_contact: 1
-      ref_motion_phase: 1
+      base_ang_vel: 3
+      projected_gravity: 3
+      dof_pos: 3
+      dof_vel: 3
+      actions: 3
+      local_tar_pos: 3
+      local_tar_vel: 3
+      tar_rot: 3
+      ref_motion_phase: 3
     history_critic:
-      base_lin_vel: 1
-      base_ang_vel: 1
-      projected_gravity: 1
-      dof_pos: 1
-      dof_vel: 1
-      actions: 1
-      tar_pos: 1
-      tar_rot: 1
+      base_lin_vel: 3
+      base_ang_vel: 3
+      projected_gravity: 3
+      dof_pos: 3
+      dof_vel: 3
+      actions: 3
+      local_tar_pos: 3
+      local_tar_vel: 3
+      tar_rot: 3
       key_robot_contact: 1
       ig: 1
-      ref_motion_phase: 1
+      ref_motion_phase: 3
   obs_scales:
     base_lin_vel: 2.0
     base_ang_vel: 0.25
@@ -1138,8 +1528,9 @@ obs:
     dof_pos: 1.0
     dof_vel: 0.05
     actions: 1.0
-    tar_pos: 1
-    tar_rot: 1
+    local_tar_pos: 1.0
+    tar_rot: 1.0
+    local_tar_vel: 1.0
     key_robot_contact: 1
     ig: 1
     dif_local_rigid_body_pos: 1.0
@@ -1154,8 +1545,9 @@ obs:
     dof_pos: 0.01
     dof_vel: 1.0
     actions: 0.0
-    tar_pos: 0.0
+    local_tar_pos: 0.0
     tar_rot: 0.0
+    local_tar_vel: 0.0
     key_robot_contact: 0.0
     ig: 0.0
     dif_local_rigid_body_pos: 0.0
@@ -1176,12 +1568,13 @@ obs:
   - projected_gravity: 3
   - dof_pos: ${robot.dof_obs_size}
   - dof_vel: ${robot.dof_obs_size}
-  - actions: ${robot.dof_obs_size}
-  - tar_pos: 3
+  - actions: ${robot.hybrid_control.ppo_actions_dim}
+  - local_tar_pos: 3
+  - local_tar_vel: 3
   - tar_rot: 4
-  - key_robot_contact: 11
-  - ig: 105
-  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'}
-  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'}
-  - ref_motion_phase: 1
+  - key_robot_contact: 19
+  - ig: 189
+  - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
+  - ref_motion_phase: ${robot.motion_num}
   post_compute_config: {}
