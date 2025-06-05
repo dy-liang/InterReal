@@ -296,8 +296,6 @@ class MujocoDeployer():
         self.action_torch = torch.from_numpy(self.action)
         self._ref_motion_phase = torch.tensor([motion_times / self.motion_length])
         self._ref_motion_phase = (motion_times / self.motion_length) #(Env,)
-        self.motions_phase = torch.zeros(self.num_envs, len(self.obj_name), dtype=torch.float, device=self.device, requires_grad=False)
-        self.motion_indices = torch.arange(self.num_envs) % 4
         self.motions_phase[np.arange(self.num_envs), self.motion_indices] = self._ref_motion_phase + 1 # +1 for larger value, (Env, num_motions)
         root_pos = torch.tensor(self.mjdata.qpos[:3])
         
