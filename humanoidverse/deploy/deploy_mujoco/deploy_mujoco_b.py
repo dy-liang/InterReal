@@ -48,14 +48,8 @@ class MujocoDeployer():
         self.xml_path = os.path.join(self.asset_root, config.robot.asset.xml_file)
         self.device = "cpu"
         self.load_obj_flag = True
-        self.num_actions = config.robot.actions_dim #43
-        #self.dof_names = [mujoco.mj_id2name(self.mjmodel, mujoco.mjtObj.mjOBJ_JOINT, self.mjmodel.actuator_trnid[i, 0]) for i in range(self.mjmodel.nu)]
-        #self.open_dof_indices = [self.dof_names.index(dof) for dof in self.config.robot.hybrid_control.hand_open_dof]
-        #self.open_dof_indices = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
-
+        self.num_actions = config.robot.actions_dim 
         self.history_handler = HistoryHandler(1, config.obs.obs_auxiliary, config.obs.obs_dims, self.device)
-
-
         simulation_dt = 1.0 / config.simulator.config.sim.fps
         self.control_decimation = config.simulator.config.sim.control_decimation
         self.dt = simulation_dt * self.control_decimation
@@ -101,7 +95,7 @@ class MujocoDeployer():
         if JIT_Policy:
             pt_model_path = os.path.join(exported_policy_path, exported_policy_name)
             self.policy = torch.jit.load(pt_model_path)
-            
+
         # load param
         self.load_pd_param(self.mjmodel, config)
         self.torque_limits = np.array(config.robot.dof_effort_limit_list)
