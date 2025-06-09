@@ -3,7 +3,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python  humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
-+domain_rand=NO_domain_rand \
++domain_rand=domain_rand_hois \
 +rewards=motion_tracking/reward_motion_tracking_dm_2real \
 +robot=g1/g1_29dof_with_hand \
 +terrain=terrain_locomotion_plane \

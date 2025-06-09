@@ -24,6 +24,7 @@ class IsaacGym(BaseSimulator):
         self.robot_config = config.robot
         self.visualize_viewer = False
         self.object_density = 25.
+        self.object_mass = 1.5
         data = joblib.load(config.robot.motion.motion_file)
         self.object_name = list(data.keys())
         print(self.object_name)
@@ -179,13 +180,13 @@ class IsaacGym(BaseSimulator):
             asset_file = object_name + ".urdf"
             obj_file = self.asset_obj_root + 'objects/' + object_name + '/' + object_name + '.obj'
             max_convex_hulls = 64
-            density = self.object_density
         
             asset_options = gymapi.AssetOptions()
             asset_options.angular_damping = 0.01
             asset_options.linear_damping = 0.01
 
-            asset_options.density = density
+            asset_options.density = self.object_density
+            #asset_options.mass = self.object_mass
             asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
             asset_options.vhacd_enabled = True
             asset_options.vhacd_params.max_convex_hulls = max_convex_hulls
@@ -334,18 +335,49 @@ class IsaacGym(BaseSimulator):
         target_handle = self.gym.create_actor(env_ptr, self._target_asset[env_id % len(self.object_name)], start_pose, self.object_name[env_id % len(self.object_name)], col_group, col_filter, segmentation_id)
 
         props = self.gym.get_actor_rigid_shape_properties(env_ptr, target_handle)
-        for p_idx in range(len(props)):
-            props[p_idx].restitution = 0.6
-            props[p_idx].friction = 0.8
-            props[p_idx].rolling_friction = 0.01
-            props[p_idx].torsion_friction = 0.8
+        if self.env_config.domain_rand.friction_range:
+            if env_id==0:
+                logger.debug("randomizing obj friction")
+            for p_idx in range(len(props)):
+                friction_scale = np.random.uniform(self.env_config.domain_rand.friction_range[0], self.env_config.domain_rand.friction_range[1])
+                props[p_idx].friction = 0.8 * friction_scale
+                props[p_idx].rolling_friction = 0.01 * friction_scale
+                props[p_idx].torsion_friction = 0.8 * friction_scale
+                props[p_idx].restitution = 0.6
         self.gym.set_actor_rigid_shape_properties(env_ptr, target_handle, props)
+
+        props =self.gym.get_actor_rigid_body_properties(env_ptr, target_handle)
+        if self.env_config.domain_rand.randomize_obj_mass:
+            if env_id==0:
+                logger.debug("randomizing obj mass")
+            for p_idx in range(len(props)):
+                mass_scale = np.random.uniform(self.env_config.domain_rand.obj_mass_range[0], self.env_config.domain_rand.obj_mass_range[1])
+                props[p_idx].mass *= mass_scale
+        self.gym.set_actor_rigid_body_properties(env_ptr, target_handle, props, recomputeInertia=True)
 
         self._target_handles.append(target_handle)
         self.gym.set_actor_scale(env_ptr, target_handle, self.ball_size)
 
         return
-    
+    def _process_obj_rigid_shape_props(self, props, env_id):
+        if self.env_config.domain_rand.randomize_obj_mass:
+            if env_id==0:
+                logger.debug("randomizing obj mass")
+            for p_idx in range(len(props)):
+                mass_scale = np.random.uniform(self.env_config.domain_rand.obj_mass_range[0], self.env_config.domain_rand.obj_mass_range[1])
+                props[p_idx].mass = mass_scale
+
+        if self.env_config.domain_rand.friction_range:
+            if env_id==0:
+                logger.debug("randomizing obj friction")
+            for p_idx in range(len(props)):
+                friction_scale = np.random.uniform(self.env_config.domain_rand.friction_range[0], self.env_config.domain_rand.friction_range[1])
+                props[p_idx].friction = 0.8 * friction_scale
+                props[p_idx].rolling_friction = 0.01 * friction_scale
+                props[p_idx].torsion_friction = 0.8 * friction_scale
+                props[p_idx].restitution = 0.6
+        return props
+
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
             Called During environment creation.
