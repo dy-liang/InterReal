@@ -10,8 +10,8 @@ python  humanoidverse/train_agent.py \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
 num_envs=4096 \
 project_name=MotionTracking \
-experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_NewRewObs_Moig+noTrackElbowShouder+TaskID+TaskPhase_ObjR_Ct \
-robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl" \
+experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_NewRewObs_Moig+noTrackElbowShouder+TaskID+TaskPhase_sub8ID00_DRv4 \
+robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250609_HOIs_ID00_43dof.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \

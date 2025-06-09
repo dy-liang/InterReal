@@ -333,50 +333,41 @@ class IsaacGym(BaseSimulator):
         # start_pose.p = gymapi.Vec3(*pos)
 
         target_handle = self.gym.create_actor(env_ptr, self._target_asset[env_id % len(self.object_name)], start_pose, self.object_name[env_id % len(self.object_name)], col_group, col_filter, segmentation_id)
-
-        props = self.gym.get_actor_rigid_shape_properties(env_ptr, target_handle)
-        if self.env_config.domain_rand.friction_range:
-            if env_id==0:
-                logger.debug("randomizing obj friction")
-            for p_idx in range(len(props)):
-                friction_scale = np.random.uniform(self.env_config.domain_rand.friction_range[0], self.env_config.domain_rand.friction_range[1])
-                props[p_idx].friction = 0.8 * friction_scale
-                props[p_idx].rolling_friction = 0.01 * friction_scale
-                props[p_idx].torsion_friction = 0.8 * friction_scale
-                props[p_idx].restitution = 0.6
-        self.gym.set_actor_rigid_shape_properties(env_ptr, target_handle, props)
-
-        props =self.gym.get_actor_rigid_body_properties(env_ptr, target_handle)
-        if self.env_config.domain_rand.randomize_obj_mass:
-            if env_id==0:
-                logger.debug("randomizing obj mass")
-            for p_idx in range(len(props)):
-                mass_scale = np.random.uniform(self.env_config.domain_rand.obj_mass_range[0], self.env_config.domain_rand.obj_mass_range[1])
-                props[p_idx].mass *= mass_scale
-        self.gym.set_actor_rigid_body_properties(env_ptr, target_handle, props, recomputeInertia=True)
+        
+        props_1 =self.gym.get_actor_rigid_body_properties(env_ptr, target_handle)
+        props_2 = self.gym.get_actor_rigid_shape_properties(env_ptr, target_handle)
+        props_1, props_2 = self._process_obj_rigid_shape_props(props_1, props_2, env_id)
+        self.gym.set_actor_rigid_body_properties(env_ptr, target_handle, props_1, recomputeInertia=True)
+        self.gym.set_actor_rigid_shape_properties(env_ptr, target_handle, props_2)
 
         self._target_handles.append(target_handle)
         self.gym.set_actor_scale(env_ptr, target_handle, self.ball_size)
 
         return
-    def _process_obj_rigid_shape_props(self, props, env_id):
+    
+    def _process_obj_rigid_shape_props(self, props_1, props_2, env_id):
         if self.env_config.domain_rand.randomize_obj_mass:
             if env_id==0:
                 logger.debug("randomizing obj mass")
-            for p_idx in range(len(props)):
+            for p_idx in range(len(props_1)):
                 mass_scale = np.random.uniform(self.env_config.domain_rand.obj_mass_range[0], self.env_config.domain_rand.obj_mass_range[1])
-                props[p_idx].mass = mass_scale
+                props_1[p_idx].mass = mass_scale
 
         if self.env_config.domain_rand.friction_range:
             if env_id==0:
                 logger.debug("randomizing obj friction")
-            for p_idx in range(len(props)):
-                friction_scale = np.random.uniform(self.env_config.domain_rand.friction_range[0], self.env_config.domain_rand.friction_range[1])
-                props[p_idx].friction = 0.8 * friction_scale
-                props[p_idx].rolling_friction = 0.01 * friction_scale
-                props[p_idx].torsion_friction = 0.8 * friction_scale
-                props[p_idx].restitution = 0.6
-        return props
+                # prepare friction randomization
+                friction_range = self.env_config.domain_rand.friction_range
+                num_buckets = 64
+                bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
+                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
+                self.friction_coeffs = friction_buckets[bucket_ids]
+            for p_idx in range(len(props_2)):
+                props_2[p_idx].friction = 0.8 * self.friction_coeffs[env_id]
+                props_2[p_idx].rolling_friction = 0.01 * self.friction_coeffs[env_id]
+                props_2[p_idx].torsion_friction = 0.8 * self.friction_coeffs[env_id]
+                props_2[p_idx].restitution = 0.6
+        return props_1, props_2
 
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.

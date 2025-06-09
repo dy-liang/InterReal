@@ -30,6 +30,10 @@ domain_rand:
       'right_hip_yaw_link', 'right_hip_roll_link', 'right_hip_pitch_link', 'right_knee_link',
   ]
 
+  # obj mass
+  randomize_obj_mass : False
+  obj_mass_range : [0.8, 1.2]
+
   randomize_pd_gain : False
   kp_range : [0.75, 1.25]
   kd_range : [0.75, 1.25]
