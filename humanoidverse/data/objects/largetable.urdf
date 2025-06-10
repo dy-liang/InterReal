@@ -2,6 +2,9 @@
 <robot name="largetable.urdf">
   <dynamics damping="0.5" friction="0.9"/>
   <link name="baseLink">
+    <inertial>
+      <mass value="5.0"/>
+    </inertial>
     <contact>
       <lateral_friction value="0.9"/>
       <rolling_friction value="0.5"/>

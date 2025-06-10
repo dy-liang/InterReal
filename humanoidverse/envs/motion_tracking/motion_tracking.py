@@ -96,7 +96,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.num_motions = self._motion_lib._num_unique_motions
         self.data_id = torch_utils.to_torch([torch.where(self.simulator.obj2motion[i % len(self.simulator.object_name)] == 1)[0][torch.randint(self.simulator.obj2motion[i % len(self.simulator.object_name)].sum(), ())] for i in range(self.num_envs)], device=self.device, dtype=torch.long)
         self.motions_phase = torch.zeros(self.num_envs, len(self.simulator.object_name), dtype=torch.float, device=self.device, requires_grad=False)
-        self.motion_indices = torch.arange(self.num_envs) % 4
+        self.motion_indices = torch.arange(self.num_envs) % len(self.simulator.object_name)
 
     def _init_tracking_config(self):
         if "motion_tracking_link" in self.config.robot.motion:

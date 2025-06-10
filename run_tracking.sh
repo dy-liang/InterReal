@@ -3,14 +3,14 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python  humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
-+domain_rand=NO_domain_rand \
++domain_rand=domain_rand_hois \
 +rewards=motion_tracking/reward_motion_tracking_dm_2real \
 +robot=g1/g1_29dof_with_hand \
 +terrain=terrain_locomotion_plane \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
-num_envs=4096 \
+num_envs=4 \
 project_name=MotionTracking \
-experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_NewRewObs_Moig+noTrackElbowShouder+TaskID+TaskPhase+ObjNoise-Objrot \
+experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_NewRewObs_Moig+noTrackElbowShouder+TaskID+TaskPhase_ObjR_Ct \
 robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \

@@ -20,7 +20,8 @@ algo:
 
     num_steps_per_env: 24
     save_interval: 100
-
+    save_jit_model: True
+    save_model: True
     load_optimizer: True
 
     init_noise_std: 0.8

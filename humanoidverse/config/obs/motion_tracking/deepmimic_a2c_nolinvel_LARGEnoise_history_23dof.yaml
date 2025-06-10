@@ -11,8 +11,8 @@ obs:
       actions,
       local_tar_pos,
       tar_rot,
-      key_robot_contact,
-      ig,
+      #key_robot_contact,
+      #ig,
       ref_motion_phase,
       # dif_local_rigid_body_pos,
       # local_ref_rigid_body_pos,
@@ -47,8 +47,8 @@ obs:
       actions: 1,
       local_tar_pos: 1,
       tar_rot: 1,
-      ig: 1,
-      key_robot_contact: 1,
+      #ig: 1,
+      #key_robot_contact: 1,
       ref_motion_phase: 1
     }
 

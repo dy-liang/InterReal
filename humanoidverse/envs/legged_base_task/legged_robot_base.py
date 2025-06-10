@@ -111,7 +111,7 @@ class LeggedRobotBase(BaseTask):
     def _init_domain_rand_buffers(self):
         ######################################### DR related tensors #########################################
         if self.config.domain_rand.randomize_ctrl_delay:
-            self.action_queue = torch.zeros(self.num_envs, self.config.domain_rand.ctrl_delay_step_range[1]+1, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+            self.action_queue = torch.zeros(self.num_envs, self.config.domain_rand.ctrl_delay_step_range[1]+1, self.ppo_dim_actions, dtype=torch.float, device=self.device, requires_grad=False)
             self.action_delay_idx = torch.randint(self.config.domain_rand.ctrl_delay_step_range[0], 
                                                 self.config.domain_rand.ctrl_delay_step_range[1]+1, (self.num_envs,), device=self.device, requires_grad=False)
 

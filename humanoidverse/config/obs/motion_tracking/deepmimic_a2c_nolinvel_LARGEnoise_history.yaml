@@ -11,7 +11,7 @@ obs:
       actions,
       local_tar_pos,
       local_tar_vel,
-      #tar_rot,
+      tar_rot,
       #key_robot_contact,
       #ig,
       ref_motion_phase,
@@ -49,7 +49,7 @@ obs:
       actions: 3,
       local_tar_pos: 3,
       local_tar_vel: 3,
-      #tar_rot: 3,
+      tar_rot: 3,
       #ig: 3,
       #key_robot_contact: 3,
       ref_motion_phase: 3
@@ -96,9 +96,15 @@ obs:
     dof_pos: 0.01,
     dof_vel: 1.0,
     actions: 0.0,
+<<<<<<< HEAD
     local_tar_pos: 0.1, #0.0, 0.01 add noise
     tar_rot: 0.1,       #0.0, 0.01 add noise
     local_tar_vel: 1.0, #0.0, add noise 
+=======
+    local_tar_pos: 0.0, #0.1, #0.0, 0.01 add noise
+    tar_rot: 0.0, #0.1,       #0.0, 0.01 add noise
+    local_tar_vel: 0.0, #1.0, #0.0, add noise 
+>>>>>>> 83e95256a3cdf5a0bc729d822f1d90fc3663e4a5
     key_robot_contact: 0.0,
     ig: 0.0,
     dif_local_rigid_body_pos: 0.0,
