@@ -8,7 +8,8 @@ import random
 from typing import Any, List, Dict
 from termcolor import colored
 from loguru import logger
-
+np2torch = lambda x: torch.tensor(x, dtype=torch.float32)
+torch2np = lambda x: x.cpu().numpy() if isinstance(x, torch.Tensor) else x
 def class_to_dict(obj) -> dict:
     if not  hasattr(obj,"__dict__"):
         return obj
@@ -39,6 +40,7 @@ def pre_process_config(config) -> None:
     assert set(config.env.config.obs.noise_scales.keys()) == set(config.env.config.obs.obs_scales.keys())
 
     # convert obs_dims to list of dicts
+    print(config.env.config.obs.obs_dims) #[{'base_lin_vel': 3}, {'base_ang_vel': 3}, {'projected_gravity': 3}, {'dof_pos': '${robot.dof_obs_size}'}, {'dof_vel': '${robot.dof_obs_size}'}, {'actions': '${robot.hybrid_control.ppo_actions_dim}'}, {'local_tar_pos': 3}, {'local_tar_vel': 3}, {'tar_rot': 4}, {'ref_motion_phase': '${robot.motion_num}'}]
     each_dict_obs_dims = {k: v for d in config.env.config.obs.obs_dims for k, v in d.items()}
     config.env.config.obs.obs_dims = each_dict_obs_dims
     logger.info(f"obs_dims: {each_dict_obs_dims}")
