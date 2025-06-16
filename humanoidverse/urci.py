@@ -32,7 +32,7 @@ import numpy as np
 
 
 # from wjxtools import pdb_decorator
-@hydra.main(config_path="/home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/key_config_model_file", config_name="base_eval")
+@hydra.main(config_path="../humanoidverse/data/key_config_model_file", config_name="base_eval")
 # @pdb_decorator
 def main(override_config: OmegaConf):
     """
@@ -99,7 +99,6 @@ def main(override_config: OmegaConf):
 
     def load_policy(config: CfgType, checkpoint: Path):
         assert checkpoint.suffix == '.onnx', f"File {checkpoint} is not a .onnx file."
-        print(checkpoint)
         session = ort.InferenceSession(checkpoint, providers=['CPUExecutionProvider'])  # 使用CPU
 
         actor_dim = config.robot.algo_obs_dim_dict['actor_obs']
@@ -272,7 +271,6 @@ def main(override_config: OmegaConf):
                 raise ValueError(f"Mismatch in obs_dims for key {key}: {main_obs_dims[key]} != {value}")
     
     setup_logging()
-    print(override_config)
     simulator_type = override_config.simulator.config.name
     
     single_policy_config = OmegaConf.load("humanoidverse/config/deploy/single.yaml")
@@ -330,7 +328,7 @@ def main(override_config: OmegaConf):
     
     
     RobotCls, pre_process_config, torch= setup_simulator(simulator_type)
-    print(sub_configs)
+
     pre_process_config(main_cfg)
     #[pre_process_config(cfg) for cfg in sub_configs]
     

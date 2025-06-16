@@ -10,6 +10,10 @@ import numpy as np
 import time
 import torch
 import signal
+# for dex3-1
+#from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber, ChannelFactoryInitialize # dds
+from unitree_sdk2py.idl.unitree_hg.msg.dds_ import HandCmd_, HandState_                               # idl
+from unitree_sdk2py.idl.default import unitree_hg_msg_dds__HandCmd_
 
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelFactoryInitialize # type: ignore
 from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelFactoryInitialize # type: ignore
@@ -20,13 +24,24 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_ as LowCmdGo # type: i
 from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG # type: ignore
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo # type: ignore
 from unitree_sdk2py.utils.crc import CRC # type: ignore
+from multiprocessing import Process, shared_memory, Array, Lock
+import threading
 
 from humanoidverse.utils.real.command_helper import create_damping_cmd, create_zero_cmd, init_cmd_hg, init_cmd_go, MotorMode
 from humanoidverse.utils.real.rotation_helper import get_gravity_orientation, transform_imu_data, quaternion_to_euler_array
 from humanoidverse.utils.real.remote_controller import RemoteController, KeyMap
 from humanoidverse.utils.helpers import parse_observation
 from humanoidverse.data.robots.dtype import RobotExitException
-
+from isaac_utils.rotations import (
+    my_quat_rotate,
+    calc_heading_quat_inv,
+    calc_heading_quat,
+    quat_mul,
+    quat_conjugate,
+    quat_to_angle_axis,
+    xyzw_to_wxyz,
+    wxyz_to_xyzw
+)
 import math
 from typing import Dict
 import numpy as np
@@ -39,6 +54,14 @@ import traceback
 from ..urcirobot import URCIRobot
 np2torch = lambda x: torch.tensor(x, dtype=torch.float32)
 torch2np = lambda x: x.cpu().numpy()
+
+unitree_tip_indices = [4, 9, 14] # [thumb, index, middle] in OpenXR
+Dex3_Num_Motors = 7
+kTopicDex3LeftCommand = "rt/dex3/left/cmd"
+kTopicDex3RightCommand = "rt/dex3/right/cmd"
+kTopicDex3LeftState = "rt/dex3/left/state"
+kTopicDex3RightState = "rt/dex3/right/state"
+
 def wrap_to_pi_float(angles:float):
     angles %= 2*np.pi
     angles -= 2*np.pi * (angles > np.pi)
@@ -59,11 +82,13 @@ class LowLevelMagic:
             self.safe_exit()
         signal.signal(signal.SIGINT, signal_handler)
         
-        config = cfg.deploy
+        self.config = config = cfg.deploy
         self.joystick = RemoteController()
-        ChannelFactoryInitialize(0, config.net)
-        
-        
+        if config.DEBUG:
+            ChannelFactoryInitialize(0)
+        else:
+            ChannelFactoryInitialize(0, config.net)
+        print("Net ok!!!!!!!!!!!!!!!!!!!!")
         if config.msg_type == "hg":
             # g1 and h1_2 use the hg msg type
             self.low_cmd = unitree_hg_msg_dds__LowCmd_()
@@ -78,6 +103,32 @@ class LowLevelMagic:
 
             self.lowstate_subscriber = ChannelSubscriber(config.lowstate_topic, LowStateHG)
             self.lowstate_subscriber.Init(self.receive_state_handler, 10)
+
+            # initialize handcmd publisher and handstate subscriber
+            if config.Dex3:
+                self.LeftHandCmb_publisher = ChannelPublisher(kTopicDex3LeftCommand, HandCmd_)
+                self.LeftHandCmb_publisher.Init()
+                self.RightHandCmb_publisher = ChannelPublisher(kTopicDex3RightCommand, HandCmd_)
+                self.RightHandCmb_publisher.Init()
+
+                self.LeftHandState_subscriber = ChannelSubscriber(kTopicDex3LeftState, HandState_)
+                self.LeftHandState_subscriber.Init()
+                self.RightHandState_subscriber = ChannelSubscriber(kTopicDex3RightState, HandState_)
+                self.RightHandState_subscriber.Init()
+                # Shared Arrays for hand states
+                self.left_hand_state_array  = Array('d', Dex3_Num_Motors, lock=True)  
+                self.right_hand_state_array = Array('d', Dex3_Num_Motors, lock=True)
+
+                # initialize subscribe thread
+                self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
+                self.subscribe_state_thread.daemon = True
+                self.subscribe_state_thread.start()
+                while True and not config.DEBUG:
+                    if any(self.left_hand_state_array) and any(self.right_hand_state_array):
+                        break
+                    time.sleep(0.01)
+                    print("[Dex3_1_Controller] Waiting to subscribe dds...")
+                print("Initialize Dex3_1_Controller OK!\n")
 
         elif config.msg_type == "go":
             raise ValueError("Not implemented for go msg type. This code is designed for hg msg type.")
@@ -102,7 +153,20 @@ class LowLevelMagic:
             init_cmd_hg(self.low_cmd, self.mode_machine_, self.mode_pr_)
         elif config.msg_type == "go":
             init_cmd_go(self.low_cmd, weak_motor=config.weak_motor)
-            
+
+    def _subscribe_hand_state(self):
+        while True:
+            self.left_hand_msg  = self.LeftHandState_subscriber.Read()
+            self.right_hand_msg = self.RightHandState_subscriber.Read()
+            if self.left_hand_msg is not None and self.right_hand_msg is not None:
+                # Update left hand state
+                for idx, id in enumerate(Dex3_1_Left_JointIndex):
+                    self.left_hand_state_array[idx] = self.left_hand_msg.motor_state[id].q
+                # Update right hand state
+                for idx, id in enumerate(Dex3_1_Right_JointIndex):
+                    self.right_hand_state_array[idx] = self.right_hand_msg.motor_state[id].q
+            time.sleep(0.002)
+
     def safe_exit(self):
         logger.info("Real Robot Exiting...")
         # os._exit(1)
@@ -161,63 +225,6 @@ class LowLevelMagic:
             logger.info("Waiting for the robot to connect...")
         logger.info("Successfully connected to the robot.")
         
-
-    # @dataclass
-    # @annotate.final
-    # @annotate.autoid("sequential")
-    # class LowCmd_(idl.IdlStruct, typename="unitree_hg.msg.dds_.LowCmd_"):
-    #     mode_pr: types.uint8
-    #     mode_machine: types.uint8
-    #     motor_cmd: types.array['unitree_sdk2py.idl.unitree_hg.msg.dds_.MotorCmd_', 35]
-    #     reserve: types.array[types.uint32, 4]
-    #     crc: types.uint32
-    
-    
-    # @dataclass
-    # @annotate.final
-    # @annotate.autoid("sequential")
-    # class MotorCmd_(idl.IdlStruct, typename="unitree_hg.msg.dds_.MotorCmd_"):
-    #     mode: types.uint8
-    #     q: types.float32
-    #     dq: types.float32
-    #     tau: types.float32
-    #     kp: types.float32
-    #     kd: types.float32
-    #     reserve: types.uint32
-    
-    # 
-    # @dataclass
-    # @annotate.final
-    # @annotate.autoid("sequential")
-    # class LowState_(idl.IdlStruct, typename="unitree_hg.msg.dds_.LowState_"):
-    #     version: types.array[types.uint32, 2]
-    #     mode_pr: types.uint8
-    #     mode_machine: types.uint8
-    #     tick: types.uint32
-    #     imu_state: 'unitree_sdk2py.idl.unitree_hg.msg.dds_.IMUState_'
-    #     motor_state: types.array['unitree_sdk2py.idl.unitree_hg.msg.dds_.MotorState_', 35]
-    #     wireless_remote: types.array[types.uint8, 40]
-    #     reserve: types.array[types.uint32, 4]
-    #     crc: types.uint32
-
-
-    # @dataclass
-    # @annotate.final
-    # @annotate.autoid("sequential")
-    # class MotorState_(idl.IdlStruct, typename="unitree_hg.msg.dds_.MotorState_"):
-    #     mode: types.uint8
-    #     q: types.float32
-    #     dq: types.float32
-    #     ddq: types.float32
-    #     tau_est: types.float32
-    #     temperature: types.array[types.int16, 2]
-    #     vol: types.float32
-    #     sensor: types.array[types.uint32, 2]
-    #     motorstate: types.uint32
-    #     reserve: types.array[types.uint32, 4]
-
-
-
 class RealRobot(URCIRobot, LowLevelMagic):
     REAL=True
     num_real_dofs: int = 29
@@ -225,15 +232,15 @@ class RealRobot(URCIRobot, LowLevelMagic):
         assert self.num_real_dofs == 29, "Only 29 dofs are supported for now"
         
         self.dof_idx_23_to_29: List[int] = cfg.deploy.dof_idx_23_to_29
+        self.dof_idx_23_of_29: List[int] = cfg.deploy.dof_idx_23_of_29 # trained dof idx in 29
         self.dof_idx_locked: List[int] = [i for i in range(0, 29) if i not in self.dof_idx_23_to_29]
         self.locked_kp: float = cfg.deploy.locked_kp
         self.locked_kd: float = cfg.deploy.locked_kd
-        
+        # self.motions_phase = torch.zeros(self.num_envs, len(self.obj_name), dtype=torch.float, device=self.device, requires_grad=False)
+        # self.motion_indices = torch.arange(self.num_envs) % 4
         
         URCIRobot.__init__(self, cfg)
         LowLevelMagic.__init__(self, cfg)
-        
-        
         
         logger.info("Initializing **Real** Robot")
         logger.info("Task Name: {}".format(cfg.log_task_name))
@@ -248,6 +255,10 @@ class RealRobot(URCIRobot, LowLevelMagic):
         self.dq_real = np.zeros(self.num_real_dofs)
         self.ddq_real = np.zeros(self.num_real_dofs)
         self.tau_est = np.zeros(self.num_real_dofs)
+        self.q_hand_real = np.zeros((2, Dex3_Num_Motors))
+        self.dq_hand_real = np.zeros((2, Dex3_Num_Motors))
+        self.ddq_hand_real = np.zeros((2, Dex3_Num_Motors))
+        self.tau_hand_est = np.zeros((2, Dex3_Num_Motors))
 
         self.kp_real = np.zeros(self.num_real_dofs)
         self.kd_real = np.zeros(self.num_real_dofs)
@@ -255,11 +266,18 @@ class RealRobot(URCIRobot, LowLevelMagic):
         self.dof_init_pose_real = np.zeros(self.num_real_dofs)
         
         # 填充有效关节的kp/kd
+        kp = self.kp[self.robot_29dof_indices] # 43 -> 29
+        kd = self.kd[self.robot_29dof_indices]
+        if self.use_motion_start_dof_pos:
+            dof_init_pose = self.dof_motion_init_pose[self.robot_29dof_indices]
+        else:
+            dof_init_pose = self.dof_init_pose[self.robot_29dof_indices]
+
         for i, j in enumerate(self.dof_idx_23_to_29):
-            self.kp_real[j] = self.kp[i]
-            self.kd_real[j] = self.kd[i]
-            self.dof_init_pose_real[j] = self.dof_init_pose[i]
-            
+            self.kp_real[j] = kp[i]
+            self.kd_real[j] = kd[i]
+            self.dof_init_pose_real[j] = dof_init_pose[i]
+        print(self.dof_init_pose_real)
         # 填充锁定关节的kp/kd
         for j in self.dof_idx_locked:
             self.kp_real[j] = self.locked_kp
@@ -271,15 +289,23 @@ class RealRobot(URCIRobot, LowLevelMagic):
             self.dq_real[j] = self.low_state.motor_state[j].dq
             self.ddq_real[j] = self.low_state.motor_state[j].ddq
             self.tau_est[j] = self.low_state.motor_state[j].tau_est
-            
-        # print('DEBUG: q',self.q_real)
-            
+
+        if self.config.Dex3 and not self.config.DEBUG:
+            for k in range(Dex3_Num_Motors):
+                self.q_hand_real[0,k] = self.left_hand_msg.motor_state[k].q
+                self.dq_hand_real[0,k] = self.left_hand_msg.motor_state[k].dq
+                self.ddq_hand_real[0,k] = self.left_hand_msg.motor_state[k].ddq
+                self.tau_hand_est[0,k] = self.left_hand_msg.motor_state[k].tau_est
+
+                self.q_hand_real[1,k] = self.right_hand_msg.motor_state[k].q
+                self.dq_hand_real[1,k] = self.right_hand_msg.motor_state[k].dq
+                self.ddq_hand_real[1,k] = self.right_hand_msg.motor_state[k].ddq
+                self.tau_hand_est[1,k] = self.right_hand_msg.motor_state[k].tau_est
+
         self.q = self.q_real[self.dof_idx_23_to_29]
         self.dq = self.dq_real[self.dof_idx_23_to_29] 
-        # breakpoint() # check the grammar
-         
+
         # quat, omega
-        
         self.quat = np.array(self.low_state.imu_state.quaternion)[[1,2,3,0]] # WXYZ to XYZW
         self.omega = np.array(self.low_state.imu_state.gyroscope)
         # self.omega = np.array([self.low_state.imu_state.gyroscope], dtype=np.float32)
@@ -288,8 +314,7 @@ class RealRobot(URCIRobot, LowLevelMagic):
         
         self.rpy = np.array(self.low_state.imu_state.rpy)
         self.rpy[self.rpy > math.pi] -= 2 * math.pi
-        
-        
+
         self.cmd[0] = self.joystick.ly *0.5
         self.cmd[1] = self.joystick.lx * -1 * 0.5
         self.cmd[3] += self.joystick.rx * -1 * self.dt * 0.5
@@ -301,8 +326,32 @@ class RealRobot(URCIRobot, LowLevelMagic):
             
         if self.is_motion_tracking:
             self.motion_time = (self.timer) * self.dt 
-            self.ref_motion_phase = self.motion_time / self.motion_len
+            self.ref_motion_phase = self.motion_time / self.motion_duration
+            # self.ref_motion_phase = (motion_times / self.motion_length) #(Env,)
+            # self.motions_phase[np.arange(self.num_envs), self.motion_indices] = self.ref_motion_phase + 1 # +1 for larger value, (Env, num_motions)
+            self.motions_phase = [self.ref_motion_phase + 1, 0.,0.,0.] # +1 for larger value, (Env, num_motions)
             
+        if "obj":
+            ## diff compute - kinematic object
+            motion_times = torch.tensor((self.timer + 1) * self.dt + self.motion_start_times) # next frames so +1 
+            motion_res = self._motion_lib.get_motion_state([0], motion_times, offset=None)
+            ref_robot_root_pos = motion_res['root_pos']
+            ref_obj_root_pos = motion_res["o_rb_pos"]
+            ref_obj_root_vel = motion_res["o_lin_vel"]
+            if True and "use real robot rot":
+                self._obs_global_obj_pos = ref_obj_root_pos.view(-1)
+                heading_inv_rot = calc_heading_quat_inv(torch.from_numpy(self.quat).clone().unsqueeze(0), w_last=True)
+            if False and "use ref robot rot":
+                ref_robot_root_rot = motion_res['root_rot'][0]
+                heading_inv_rot = calc_heading_quat_inv(ref_robot_root_rot.clone().unsqueeze(0).to(torch.float64), w_last=True)
+
+            local_obj_root_pos = ref_obj_root_pos.view(1, -1, 3) - ref_robot_root_pos.view(1, 1, 3)
+            local_obj_pos_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_obj_root_pos.view(-1, 3).to(torch.float64))
+            self._obs_local_obj_pos = local_obj_pos_flat.view(-1) # (num_envs, 3)
+
+            local_obj_root_vel = ref_obj_root_vel.view(1, -1, 3)
+            local_obj_root_vel_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_obj_root_vel.view(-1, 3).to(torch.float64))
+            self._obs_local_obj_vel = local_obj_root_vel_flat.view(-1) # (num_envs, 3)
         print("cmd: ", self.cmd,end='\r\b')
         # print("cmd: ", self.cmd,'| rpy: ', self.rpy, end='\r\b')
         # breakpoint() # check the syntax of self.cmd
@@ -311,13 +360,13 @@ class RealRobot(URCIRobot, LowLevelMagic):
     def _reset(self):
         # self.ToZeroTorque()
         
-        self.ToDamping()
+        #self.ToDamping()
+
         self.MoveToDefaultPose()
         self.KeepDefaultPose()
         
     def _apply_action(self, target_q):
-        self.SetPose(target_q)
-        
+        self.SetPose(target_q)        
     
     def _get_motion_to_save_torch(self)->Tuple[float, Dict[str, torch.Tensor]]:
         
@@ -455,9 +504,9 @@ class RealRobot(URCIRobot, LowLevelMagic):
     # you should assume that the previous low_cmd is randomly generated
     def SetPose(self, pose: np.ndarray):
         assert pose.shape == (self.num_dofs,)
-        
+        robot_pose = pose[self.robot_29dof_indices]
         for i, j in enumerate(self.dof_idx_23_to_29):
-            self.low_cmd.motor_cmd[j].q = pose[i]
+            self.low_cmd.motor_cmd[j].q = robot_pose[i]
             self.low_cmd.motor_cmd[j].qd = 0
             self.low_cmd.motor_cmd[j].tau = 0
             # self.low_cmd.motor_cmd[j].kp = 0  # 使用预计算值
@@ -476,7 +525,11 @@ class RealRobot(URCIRobot, LowLevelMagic):
             self.low_cmd.motor_cmd[j].kd = self.kd_real[j]  # 使用预计算值
             
         self.send_cmd()
-    
+
+        # hand 关节
+        robot_pose = pose[self.hand_indices]
+        self.control_process(robot_pose[:Dex3_Num_Motors], robot_pose[Dex3_Num_Motors:])
+
     def ToDamping(self):
         logger.info("Enter damping state.")
         logger.info("Waiting for the start signal...")
@@ -508,6 +561,7 @@ class RealRobot(URCIRobot, LowLevelMagic):
         for i in range(num_step + 1):
             alpha = i / num_step
             for j in range(self.num_real_dofs):
+                print(j,end_dof_pos[j],self.kp_real[j])
                 self.low_cmd.motor_cmd[j].q = start_dof_pos[j] * (1 - alpha) + end_dof_pos[j] * alpha
                 self.low_cmd.motor_cmd[j].qd = 0
                 self.low_cmd.motor_cmd[j].kp = self.kp_real[j]  # Use pre-calculated values
@@ -534,8 +588,75 @@ class RealRobot(URCIRobot, LowLevelMagic):
             time.sleep(self.dt)
 
 
+    def control_process(self, q_l=0, q_r=0, kp=1.5, kd=0.2):
 
+        #q_l = [1.0183, -0.504,  -0.738, -0.5733, -1.0024, -0.5268, -1.0644]
+        #q_r = [1.018,  0.502, 0.7708,  0.5636,  1.0934,  0.5781,  1.077 ]
+        kp = 1.5
+        kd = 0.2
 
+        # initialize dex3-1's left hand cmd msg
+        self.left_msg  = unitree_hg_msg_dds__HandCmd_()
+        for id in Dex3_1_Left_JointIndex:
+            ris_mode = self._RIS_Mode(id = id, status = 0x01)
+            motor_mode = ris_mode._mode_to_uint8()
+            self.left_msg.motor_cmd[id].mode = motor_mode
+            self.left_msg.motor_cmd[id].q    = q_l[id]
+            self.left_msg.motor_cmd[id].dq   = 0
+            self.left_msg.motor_cmd[id].tau  = 0
+            self.left_msg.motor_cmd[id].kp   = kp
+            self.left_msg.motor_cmd[id].kd   = kd
+        self.LeftHandCmb_publisher.Write(self.left_msg)
+        # initialize dex3-1's right hand cmd msg
+        self.right_msg = unitree_hg_msg_dds__HandCmd_()
+        for id in Dex3_1_Right_JointIndex:
+            ris_mode = self._RIS_Mode(id = id, status = 0x01)
+            motor_mode = ris_mode._mode_to_uint8()
+            self.right_msg.motor_cmd[id].mode = motor_mode  
+            self.right_msg.motor_cmd[id].q    = q_r[id]
+            self.right_msg.motor_cmd[id].dq   = 0
+            self.right_msg.motor_cmd[id].tau  = 0
+            self.right_msg.motor_cmd[id].kp   = kp
+            self.right_msg.motor_cmd[id].kd   = kd  
+        self.RightHandCmb_publisher.Write(self.right_msg)
+        
+    class _RIS_Mode:
+        def __init__(self, id=0, status=0x01, timeout=0):
+            self.motor_mode = 0
+            self.id = id & 0x0F  # 4 bits for id
+            self.status = status & 0x07  # 3 bits for status
+            self.timeout = timeout & 0x01  # 1 bit for timeout
 
+        def _mode_to_uint8(self):
+            self.motor_mode |= (self.id & 0x0F)
+            self.motor_mode |= (self.status & 0x07) << 4
+            self.motor_mode |= (self.timeout & 0x01) << 7
+            return self.motor_mode
+    def ctrl_dual_hand(self, left_q_target, right_q_target):
+        """set current left, right hand motor state target q"""
+        for idx, id in enumerate(Dex3_1_Left_JointIndex):
+            self.left_msg.motor_cmd[id].q = left_q_target[idx]
+        for idx, id in enumerate(Dex3_1_Right_JointIndex):
+            self.right_msg.motor_cmd[id].q = right_q_target[idx]
 
+        self.LeftHandCmb_publisher.Write(self.left_msg)
+        self.RightHandCmb_publisher.Write(self.right_msg)
+        # print("hand ctrl publish ok.")
+from enum import IntEnum
+class Dex3_1_Left_JointIndex(IntEnum):
+    kLeftHandThumb0 = 0
+    kLeftHandThumb1 = 1
+    kLeftHandThumb2 = 2
+    kLeftHandMiddle0 = 3
+    kLeftHandMiddle1 = 4
+    kLeftHandIndex0 = 5
+    kLeftHandIndex1 = 6
 
+class Dex3_1_Right_JointIndex(IntEnum):
+    kRightHandThumb0 = 0
+    kRightHandThumb1 = 1
+    kRightHandThumb2 = 2
+    kRightHandIndex0 = 3
+    kRightHandIndex1 = 4
+    kRightHandMiddle0 = 5
+    kRightHandMiddle1 = 6

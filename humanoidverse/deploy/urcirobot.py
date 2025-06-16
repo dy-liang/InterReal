@@ -9,7 +9,9 @@ import torch
 import os
 from pathlib import Path
 from humanoidverse.data.robots.dtype import RobotExitException
-
+from humanoidverse.utils.motion_lib.hoi_motion_lib_base import MotionLibHoi
+from humanoidverse.utils.motion_lib.motion_lib_robot import MotionLibRobot
+import joblib
 URCIRobotType = TypeVar('URCIRobotType', bound='URCIRobot')
 ObsCfg = Union[DictConfig, Callable[[URCIRobotType],np.ndarray]]
 URCIPolicyObs = Tuple[ObsCfg, Callable]
@@ -53,14 +55,26 @@ class URCIRobot:
         self.device: str = "cpu"
         self.dt: float = cfg.deploy.ctrl_dt
         self.timer: int = 0
-        
+        self.load_motion = True
         
         self.num_actions = cfg.robot.actions_dim
         self.heading_cmd = cfg.deploy.heading_cmd   
         self.clip_action_limit: float = cfg.robot.control.action_clip_value
         self.clip_observations: float = cfg.env.config.normalization.clip_observations
         self.action_scale: float = cfg.robot.control.action_scale
-        
+        if self.load_motion:
+            data_seq = joblib.load(cfg.env.config.robot.motion.motion_file)
+            self.obj_name = list(data_seq.keys())
+            self._motion_lib = MotionLibHoi(cfg.env.config.robot.motion, num_envs=1, device=self.device)
+            self._motion_lib.load_motions(random_sample=False)
+            self.motion_duration = self._motion_lib.get_motion_length()[0]
+            self.motion_start_times = 0
+            self.use_motion_start_dof_pos = False
+            self.open_dof_indices = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42] # 20
+            self.hand_indices = [22, 23, 24, 25, 26, 27, 28,  36, 37, 38, 39, 40, 41, 42] #14
+            self.robot_29dof_indices = [i for i in range(self.num_actions) if i not in self.hand_indices] #29
+            self.rl_action_indices = [i for i in range(self.num_actions) if i not in self.open_dof_indices] #23
+            
         self._make_init_pose()
         self._make_buffer()
         if cfg.log_task_name == "motion_tracking":
@@ -73,7 +87,7 @@ class URCIRobot:
             if self.save_motion: self._make_init_save_motion()
         else: 
             self.save_motion = False
-        
+
     
     def routing(self, cfg_policies: List[URCIPolicyObs]):
         """
@@ -120,10 +134,11 @@ class URCIRobot:
                     # breakpoint()
 
                     
-                    # breakpoint()
+                    breakpoint()
                 
                 action = policy_fn(self.Obs())[0]
-                
+                action = self.Check_add_open_actions(action)
+
                 if self.BYPASS_ACT: action = np.zeros_like(action)
                 
                 if self.SWITCH_EMA and self.timer <10:
@@ -134,7 +149,7 @@ class URCIRobot:
                 self.ApplyAction(action)
                 
                 self.TrySaveMotionStep()
-                
+
                 if self.motion_len > 0 and self.ref_motion_phase > 1.0:
                     # self.Reset()
                     if self._ref_pid == 0:
@@ -143,6 +158,8 @@ class URCIRobot:
                         self._ref_pid = 0
                     self.TrySaveMotionFile(pid=cur_pid)
                     logger.info("Motion End. Switch to the Default Policy")
+                    import sys
+                    sys.exit()
                 t2 = time.time()
                 
                 # print(f"t2-t1 = {(t2-t1)*1e3} ms")
@@ -225,13 +242,34 @@ class URCIRobot:
         self.timer += 1
         
         self.act = action.copy()
-        target_q = np.clip(action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
+        target_q = np.clip(action, -self.clip_action_limit, self.clip_action_limit) + self.dof_init_pose
         
         self._apply_action(target_q)
         
         self.UpdateObs()
 
-    
+    def Check_add_open_actions(self, action):
+        if self.cfg.robot.hybrid_control_mode:
+            motion_times = torch.tensor((self.timer + 1) * self.dt + self.motion_start_times) # next frames so +1 
+            motion_res = self._motion_lib.get_motion_state([0], motion_times, offset=None)
+
+            # open loop control data
+            self.ref_joint_pos = motion_res["dof_pos"][0][self.open_dof_indices] #
+            hand_motion_dof = self.ref_joint_pos.view(2,-1).cpu().numpy()
+            wirst = hand_motion_dof[:,:3]
+            thumb = hand_motion_dof[:,7:]
+            middle = hand_motion_dof[:,5:7]
+            index = hand_motion_dof[:,3:5]
+            thumb[:,0] = thumb[:,0] + 1.0  #TODO: calibration again
+            fix_motion_dof = np.concatenate((wirst,thumb,middle,index),axis=-1).reshape(-1)
+
+            hybrid_action = np.zeros((self.num_actions),dtype=np.float32)
+            hybrid_action[self.open_dof_indices] = fix_motion_dof
+            hybrid_action[self.rl_action_indices] = action * self.action_scale
+        else:
+            hybrid_action = action * self.action_scale
+        return hybrid_action
+
     def Obs(self)->Dict[str, np.ndarray]:
         return {'actor_obs': torch2np(self.obs_buf_dict['actor_obs']).reshape(1, -1)}
     
@@ -286,7 +324,8 @@ class URCIRobot:
             
             # print("obs_keys", obs_keys, self.obs_buf_dict_raw[obs_key])            
             # print("obs_keys:", obs_keys)
-            # print("obs shape:", {key: self.obs_buf_dict_raw[obs_key][key].shape for key in obs_keys})            
+            # print("obs shape:", {key: self.obs_buf_dict_raw[obs_key][key].shape for key in obs_keys})
+
             self.obs_buf_dict[obs_key] = torch.cat([self.obs_buf_dict_raw[obs_key][key] for key in obs_keys], dim=-1)
             
             
@@ -323,7 +362,7 @@ class URCIRobot:
         assert self.cfg is not None or not isinstance(self.cfg, OmegaConf), "cfg is not set"
         
         assert self.num_dofs is not None, "num_dofs is not set"
-        assert self.num_dofs == 23, "In policy level, only 23 dofs are supported for now"
+        assert self.num_dofs == 23 or self.cfg.robot.hybrid_control_mode==True, "In policy level, only 23 dofs are supported for now"
         assert self.kp is not None and type(self.kp) == np.ndarray and self.kp.shape == (self.num_dofs,), "kp is not set"
         assert self.kd is not None and type(self.kd) == np.ndarray and self.kd.shape == (self.num_dofs,), "kd is not set"
         
@@ -343,13 +382,23 @@ class URCIRobot:
         self.dof_names = self.cfg.robot.dof_names
         self.num_bodies = len(self.body_names)
         self.num_dofs = len(self.dof_names)
-        assert self.num_dofs == 23, "Only 23 dofs are supported for now" #dyliang 23
+
+        assert self.num_dofs == 23 or self.cfg.robot.hybrid_control_mode==True, "Only 23 dofs are supported for now" #dyliang 23
         
-        
+
         dof_init_pose = cfg_init_state.default_joint_angles
         dof_effort_limit_list = self.cfg.robot.dof_effort_limit_list
         
         self.dof_init_pose = np.array([dof_init_pose[name] for name in self.dof_names])
+        if self.use_motion_start_dof_pos:
+            motion_res = self._motion_lib.get_motion_state([0], torch.tensor(0))
+            motion_start_dof_pos = motion_res['dof_pos'][0]
+            print(motion_start_dof_pos)
+            assert len(motion_start_dof_pos) == 43, "please check 43 motion dofs" #dyliang 23
+            self.dof_motion_init_pose = np.array(motion_start_dof_pos)
+        if self.cfg.robot.with_open_obs == False:
+            self.num_get_dofs = self.num_dofs - len(self.open_dof_indices) #23
+
         self.tau_limit = np.array(dof_effort_limit_list)
         
         
@@ -372,13 +421,16 @@ class URCIRobot:
     def _make_buffer(self):
         self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
         
-        self.q = np.zeros(self.num_dofs)
-        self.dq = np.zeros(self.num_dofs)
+        self.q = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs
+        self.dq = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs
         self.quat = np.zeros(4)  # XYZW
         self.omega = np.zeros(3)
         self.gvec = np.zeros(3)
         self.rpy = np.zeros(3)
-        
+        self._obs_local_obj_pos = np.zeros((3)) 
+        self._obs_global_obj_pos = np.zeros((3)) 
+        self._obs_local_obj_vel = np.zeros((3))
+        self.global_obj_rot = np.zeros((4))
         self.act = np.zeros(self.num_dofs)
         
         
@@ -386,7 +438,7 @@ class URCIRobot:
         ...
         
     def _make_motionlib(self):
-        self.motion_len = self.cfg.obs.motion_len
+        self.motion_len = self.cfg.obs.motion_len #self.motion_length[0] #
         ...
         
         
@@ -474,7 +526,7 @@ class URCIRobot:
         return np2torch(self.cmd[2:3])
     
     def _get_obs_actions(self,):
-        return np2torch(self.act)
+        return np2torch(self.act[self.rl_action_indices])
     
     def _get_obs_base_pos_z(self,):
         # raise NotImplementedError("Not Implemented")
@@ -498,15 +550,32 @@ class URCIRobot:
         return np2torch(self.gvec)
     
     def _get_obs_dof_pos(self,):
-        return np2torch(self.q - self.dof_init_pose)
+        return np2torch(self.q[self.dof_idx_23_of_29] - self.dof_init_pose[self.rl_action_indices])
     
     def _get_obs_dof_vel(self,):
-        return np2torch(self.dq)
+        return np2torch(self.dq[self.dof_idx_23_of_29])
     
+    def _get_obs_local_tar_pos(self,):
+        return np2torch(self._obs_local_obj_pos)
+
+    def _get_obs_global_tar_pos(self,):
+        return np2torch(self._obs_global_obj_pos)
     
+    def _get_obs_local_tar_vel(self,):
+        return np2torch(self._obs_local_obj_vel)
+    
+    def _get_obs_tar_rot(self,):
+        return np2torch(self.global_obj_rot)
+
     def _get_obs_ref_motion_phase(self):
-        # logger.info(f"Phase: {self.ref_motion_phase} | {self.motion_len}")
-        return torch.tensor(self.ref_motion_phase).reshape(1,)
+        if self.cfg.obs.obs_dims.ref_motion_phase == 1:
+            return np2torch(self.ref_motion_phase)
+        elif self.cfg.obs.obs_dims.ref_motion_phase != 1:
+            return np2torch(self.motions_phase)
+        
+    # def _get_obs_ref_motion_phase(self):
+    #     # logger.info(f"Phase: {self.ref_motion_phase} | {self.motion_len}")
+    #     return torch.tensor(self.ref_motion_phase).reshape(1,)
     
     def _get_obs_dif_local_rigid_body_pos(self):
         raise NotImplementedError("Not implemented")
