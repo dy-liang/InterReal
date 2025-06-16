@@ -9,8 +9,8 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      local_tar_pos,
-      local_tar_vel,
+      global_tar_pos,
+      global_tar_vel,
       tar_rot,
       #key_robot_contact,
       #ig,
@@ -28,8 +28,8 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      local_tar_pos,
-      local_tar_vel,
+      global_tar_pos,
+      global_tar_vel,
       tar_rot,
       key_robot_contact,
       ig,
@@ -47,8 +47,8 @@ obs:
       dof_pos: 3,
       dof_vel: 3,
       actions: 3,
-      local_tar_pos: 3,
-      local_tar_vel: 3,
+      global_tar_pos: 3,
+      global_tar_vel: 3,
       tar_rot: 3,
       #ig: 3,
       #key_robot_contact: 3,
@@ -62,8 +62,8 @@ obs:
       dof_pos: 3,
       dof_vel: 3,
       actions: 3,
-      local_tar_pos: 3,
-      local_tar_vel: 3,
+      global_tar_pos: 3,
+      global_tar_vel: 3,
       tar_rot: 3,
       key_robot_contact: 1,
       ig: 1,
@@ -76,10 +76,14 @@ obs:
     projected_gravity: 1.0,
     dof_pos: 1.0,
     dof_vel: 0.05,
+    full_dof_pos: 1.0,
+    full_dof_vel: 0.05,
     actions: 1.0,
     local_tar_pos: 1.0,
+    global_tar_pos: 1.0,
     tar_rot: 1.0,
     local_tar_vel: 1.0, # 1.0 0.05
+    global_tar_vel: 1.0,
     key_robot_contact: 1,
     ig: 1,
     dif_local_rigid_body_pos: 1.0,
@@ -95,16 +99,14 @@ obs:
     projected_gravity: 0.2,
     dof_pos: 0.01,
     dof_vel: 1.0,
+    full_dof_pos: 0.01,
+    full_dof_vel: 1.0,
     actions: 0.0,
-<<<<<<< HEAD
     local_tar_pos: 0.1, #0.0, 0.01 add noise
+    global_tar_pos: 0.1, #0.0, 0.01 add noise
     tar_rot: 0.1,       #0.0, 0.01 add noise
     local_tar_vel: 1.0, #0.0, add noise 
-=======
-    local_tar_pos: 0.0, #0.1, #0.0, 0.01 add noise
-    tar_rot: 0.0, #0.1,       #0.0, 0.01 add noise
-    local_tar_vel: 0.0, #1.0, #0.0, add noise 
->>>>>>> 83e95256a3cdf5a0bc729d822f1d90fc3663e4a5
+    global_tar_vel: 1.0, #0.0, add noise 
     key_robot_contact: 0.0,
     ig: 0.0,
     dif_local_rigid_body_pos: 0.0,
@@ -126,11 +128,15 @@ obs:
     - base_lin_vel: 3
     - base_ang_vel: 3
     - projected_gravity: 3
-    - dof_pos: ${robot.dof_obs_size}
-    - dof_vel: ${robot.dof_obs_size}
+    - dof_pos: ${robot.hybrid_control.ppo_actions_dim}
+    - dof_vel: ${robot.hybrid_control.ppo_actions_dim}
+    - full_dof_pos: ${robot.dof_obs_size}
+    - full_dof_vel: ${robot.dof_obs_size}
     - actions: ${robot.hybrid_control.ppo_actions_dim}
     - local_tar_pos: 3
+    - global_tar_pos: 3
     - local_tar_vel: 3
+    - global_tar_vel: 3
     - tar_rot: 4
     - key_robot_contact: 19
     - ig: 189

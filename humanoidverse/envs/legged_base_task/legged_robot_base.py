@@ -890,17 +890,32 @@ class LeggedRobotBase(BaseTask):
     def _get_obs_projected_gravity(self,):
         return self.projected_gravity
     
-    def _get_obs_dof_pos(self,):
+    def _get_obs_full_dof_pos(self,):
         return self.simulator.dof_pos - self.default_dof_pos
     
-    def _get_obs_dof_vel(self,):
+    def _get_obs_full_dof_vel(self,):
         return self.simulator.dof_vel
+
+    def _get_obs_dof_pos(self,):
+        dof_pos = self.simulator.dof_pos - self.default_dof_pos
+        if self.config.robot.with_open_obs: return dof_pos
+        else: return dof_pos[:,self.ppo_action_indices]
+    
+    def _get_obs_dof_vel(self,):
+        if self.config.robot.with_open_obs: return self.simulator.dof_vel
+        else: return self.simulator.dof_vel[:,self.ppo_action_indices]
 
     def _get_obs_local_tar_pos(self,):
         return self._obs_local_tar_pos
 
     def _get_obs_local_tar_vel(self,):
         return self._obs_local_tar_vel
+    
+    def _get_obs_global_tar_vel(self,):
+        return self._obs_global_tar_vel
+    
+    def _get_obs_global_tar_pos(self,):
+        return self._obs_global_tar_pos
     
     def _get_obs_tar_rot(self,):
         return self.simulator.tar_root_states[:, 3:7]

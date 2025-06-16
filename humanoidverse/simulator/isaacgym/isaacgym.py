@@ -353,11 +353,11 @@ class IsaacGym(BaseSimulator):
                 mass_scale = np.random.uniform(self.env_config.domain_rand.obj_mass_range[0], self.env_config.domain_rand.obj_mass_range[1])
                 props_1[p_idx].mass = mass_scale
 
-        if self.env_config.domain_rand.friction_range:
+        if self.env_config.domain_rand.randomize_obj_friction:
             if env_id==0:
                 logger.debug("randomizing obj friction")
                 # prepare friction randomization
-                friction_range = self.env_config.domain_rand.friction_range
+                friction_range = self.env_config.domain_rand.obj_friction_range
                 num_buckets = 64
                 bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
                 friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
@@ -367,6 +367,12 @@ class IsaacGym(BaseSimulator):
                 props_2[p_idx].rolling_friction = 0.01 * self.friction_coeffs[env_id]
                 props_2[p_idx].torsion_friction = 0.8 * self.friction_coeffs[env_id]
                 props_2[p_idx].restitution = 0.6
+        else:
+            for p_idx in range(len(props_2)):
+                props_2[p_idx].friction = 0.8
+                props_2[p_idx].rolling_friction = 0.01
+                props_2[p_idx].torsion_friction = 0.8
+                props_2[p_idx].restitution = 0.6 
         return props_1, props_2
 
     def _process_rigid_shape_props(self, props, env_id):

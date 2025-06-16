@@ -34,6 +34,10 @@ domain_rand:
   randomize_obj_mass : False
   obj_mass_range : [0.8, 1.2]
 
+  randomize_obj_friction : False
+  obj_friction_range : [0.8, 1.2]
+
+
   randomize_pd_gain : False
   kp_range : [0.75, 1.25]
   kd_range : [0.75, 1.25]

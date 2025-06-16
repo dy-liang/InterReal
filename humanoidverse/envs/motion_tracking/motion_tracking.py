@@ -226,8 +226,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
-            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
     def resample_motion(self):
         self._motion_lib.load_motions(random_sample=True)
@@ -302,16 +302,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.dif_global_body_ang_vel = ref_body_ang_vel_extend - self._rigid_body_ang_vel_extend
         # ang_vel_reward = self._reward_teleop_body_ang_velocity_extend()
 
-
-
         ## diff compute - kinematic joint position
         self.dif_joint_angles = ref_joint_pos - self.simulator.dof_pos
         ## diff compute - kinematic joint velocity
         self.dif_joint_velocities = ref_joint_vel - self.simulator.dof_vel
-
-        
-
-        #print(self.simulator.tar_root_states[2, :3] )
 
         # marker_coords for visualization
         self.marker_coords[:] = ref_body_pos_extend.reshape(B, -1, 3)
@@ -364,7 +358,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         local_tar_root_vel_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_tar_root_vel.view(-1, 3))
         self._obs_local_tar_vel = local_tar_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
 
-
+        self._obs_global_tar_pos = self.simulator.tar_root_states[:, :3].view(env_batch_size, -1)
+        self._obs_global_tar_vel = self.simulator.tar_root_states[:, 7:10].view(env_batch_size, -1)
         self.dif_global_tar_pos = (self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3]).view(env_batch_size, -1, 3) # [num_envs,1, 3]
 
         self._log_motion_tracking_info()
