@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import time
 from pathlib import Path
 import os
 from humanoidverse.envs.legged_base_task.legged_robot_base import LeggedRobotBase
@@ -20,7 +21,7 @@ from humanoidverse.envs.env_utils.visualization import Point
 from humanoidverse.utils.motion_lib.skeleton import SkeletonTree
 
 from humanoidverse.utils.motion_lib.hoi_motion_lib_base import MotionLibHoi
-
+from humanoidverse.utils.interDR import WeightedMovingFilter, get_interDR_dof14_parallel,init_ik_worker, test_ik
 from termcolor import colored
 from loguru import logger
 
@@ -30,9 +31,12 @@ import joblib
 class LeggedRobotMotionTracking(LeggedRobotBase):
     def __init__(self, config, device):
         self.init_done = False
-        self.debug_viz = True
-        
+        self.debug_viz = False
+        self.add_inter_dr = True
+        init_ik_worker()
+        #test_ik()
         super().__init__(config, device)
+
         self._init_motion_lib()
         self._init_motion_extend()
         self._init_tracking_config()
@@ -97,7 +101,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.data_id = torch_utils.to_torch([torch.where(self.simulator.obj2motion[i % len(self.simulator.object_name)] == 1)[0][torch.randint(self.simulator.obj2motion[i % len(self.simulator.object_name)].sum(), ())] for i in range(self.num_envs)], device=self.device, dtype=torch.long)
         self.motions_phase = torch.zeros(self.num_envs, len(self.simulator.object_name), dtype=torch.float, device=self.device, requires_grad=False)
         self.motion_indices = torch.arange(self.num_envs) % len(self.simulator.object_name)
-
+        self.delta_ramdom_xy = torch.zeros(self.num_envs, 2, dtype=torch.float, device=self.device, requires_grad=False)
+        self.flag = True
     def _init_tracking_config(self):
         if "motion_tracking_link" in self.config.robot.motion:
             self.motion_tracking_id = [self.simulator._body_list.index(link) for link in self.config.robot.motion.motion_tracking_link]
@@ -132,6 +137,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
                                          requires_grad=False) # extend
             
             self.ref_body_pos_extend = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+            self.ref_body_rot_extend = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 4, dtype=torch.float, device=self.device, requires_grad=False)
             self.dif_global_body_pos = torch.zeros(self.num_envs, self.num_bodies + self.num_extend_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
             self.dif_global_tar_pos = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
 
@@ -199,7 +205,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         super()._check_termination()
         if self.config.termination.terminate_when_motion_far:
             self.reset_buf |= torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
-            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold+0.2, dim=-1)
             # log current motion far threshold
             if self.config.termination_curriculum.terminate_when_motion_far_curriculum:
                 self.log_dict["terminate_when_motion_far_threshold"] = torch.tensor(self.terminate_when_motion_far_threshold, dtype=torch.float)
@@ -224,6 +230,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.motion_len[env_ids] = self._motion_lib.get_motion_length(self.motion_ids[env_ids])
         if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
             self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
@@ -235,6 +242,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
+
+        # if self.episode_length_buf[0]==1:
+        #     print("SIM 1 frame arm+box pos:",self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[1]],self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[3]],self.simulator.tar_root_states[:, :3])
+        #     print("\n")
         offset = self.env_origins
         B = self.motion_ids.shape[0]
         motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 
@@ -245,7 +256,9 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ref_body_pos_extend = motion_res["rg_pos_t"]
         self.ref_body_pos_extend[:] = ref_body_pos_extend # for visualization and analysis
         ref_body_vel_extend = motion_res["body_vel_t"] # [num_envs, num_markers, 3]
-        self.ref_body_rot_extend = ref_body_rot_extend = motion_res["rg_rot_t"] # [num_envs, num_markers, 4]
+        ref_body_rot_extend = motion_res["rg_rot_t"] # [num_envs, num_markers, 4]
+        self.ref_body_rot_extend[:] = ref_body_rot_extend # for visualization and analysis
+
         ref_body_ang_vel_extend = motion_res["body_ang_vel_t"] # [num_envs, num_markers, 3]
         ref_joint_pos = motion_res["dof_pos"] # [num_envs, num_dofs]
         ref_joint_vel = motion_res["dof_vel"] # [num_envs, num_dofs]
@@ -409,6 +422,89 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
                 for pos_id, pos_joint in enumerate(self.teleop_marker_coords[env_id]):
                     self.simulator.draw_sphere(pos_joint, 0.02, (0.851, 0.144, 0.07), env_id, pos_id)
 
+
+
+    def small_random_quaternions(self, n, max_angle):
+            axis = torch.randn((n, 3), device=self.device)
+            axis = axis / torch.norm(axis, dim=1, keepdim=True)  # Normalize axis
+            angles = max_angle * torch.rand((n, 1), device=self.device)
+            
+            # Convert angle-axis to quaternion
+            sin_half_angle = torch.sin(angles / 2)
+            cos_half_angle = torch.cos(angles / 2)
+            
+            q = torch.cat([sin_half_angle * axis, cos_half_angle], dim=1)  
+            return q
+
+    def _reset_dofs(self, env_ids):
+        """ Resets DOF position and velocities of selected environmments
+        Positions are randomly selected within 0.5:1.5 x default positions.
+        Velocities are set to zero.
+
+        Args:
+            env_ids (List[int]): Environemnt ids
+        """
+        #import time
+        #time.sleep(5)
+
+        motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
+        offset = self.env_origins
+        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+
+        dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
+        dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
+        dof_pos = motion_res['dof_pos'][env_ids]
+        dof_vel = motion_res['dof_vel'][env_ids]
+        self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
+        self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
+
+        if self.add_inter_dr: self.interation_dr(env_ids, motion_res)
+
+    def interation_dr(self, env_ids, motion_res):
+
+        ref_body_pos_extend = motion_res["rg_pos_t"]
+        ref_body_rot_extend = motion_res["rg_rot_t"] 
+        ref_dof_pos = motion_res['dof_pos']
+        contact_thres = 0.1
+        self.delta_ramdom_xy = torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device)
+        # if self.flag:
+        #     self.delta_ramdom_xy = torch_utils.to_torch([[0.1,0.1]]) #torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device) #torch_utils.to_torch([[0.1,0.1]]) #
+        #     self.flag = False
+        # else:
+        #     self.delta_ramdom_xy = torch_utils.to_torch([[-0.1,-0.1]])
+        #     self.flag = True
+        #print("RESET random value:", self.delta_ramdom_xy)
+        contact_hand = torch.any(torch.abs(self.simulator.contact_forces[env_ids]) > 0.1, dim=-1).float()[:,self.hand_indices]
+        contact_hand_any = torch.any(contact_hand > contact_thres, dim=-1).float()
+        ids = torch.nonzero(contact_hand_any==1).squeeze(-1) 
+        #print(ids)
+        if len(ids):
+            print("RESET!! env num:", len(ids))
+            p_old_axis_l = ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[1]]     # 左右手末端pos(world 坐标系)
+            p_old_axis_r =  ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[3]]  
+            p_old_axis_l[:, :2] +=self.delta_ramdom_xy[ids]
+            p_old_axis_r[:, :2] +=self.delta_ramdom_xy[ids]
+
+            torso_pos = ref_body_pos_extend[env_ids[ids],self.torso_body_id]
+            torso_rot = ref_body_rot_extend[env_ids[ids],self.torso_body_id]
+
+            target_pos_l = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_l).cpu().numpy() # world 坐标系 -> torso 坐标系
+            target_pos_r = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_r).cpu().numpy()
+            #print("Give 0 frame arm+box pos:",p_old_axis_l, p_old_axis_r, motion_res["o_rb_pos"][env_ids, :2] + self.delta_ramdom_xy)
+            #print(torch.norm(p_old_axis_l-p_old_axis_r, dim=-1), torch.norm(target_pos_l-target_pos_r, dim=-1))
+            #ref_hand_dof_pos = ref_dof_pos[env_ids][:,self.ik_hand_dof_indices].cpu().numpy()
+            #sol_q_batch = self.arm_ik.get_interDR_dof14(env_ids, target_pos_l, target_pos_r, ref_hand_dof_pos) # (num_env,14)
+            t = time.time()
+            current_q_list = [np.zeros(14).copy() for _ in range(len(ids))]
+            sol_q_batch, _ = get_interDR_dof14_parallel(
+                env_ids=range(len(ids.cpu().numpy())),
+                new_left_pos=target_pos_l,  # shape: [N, 3]
+                new_right_pos=target_pos_r, # shape: [N, 3]
+                current_q_list=current_q_list,
+            )
+            self.simulator.dof_pos[env_ids[ids], 15:22] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, :7]
+            self.simulator.dof_pos[env_ids[ids], 29:36] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, 7:]
+
     def _reset_root_states(self, env_ids):
         # reset root states according to the reference motion
         """ Resets ROOT states position and velocities of selected environmments
@@ -455,6 +551,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
             self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
+            self.simulator.tar_root_states[env_ids, :2] = self.simulator.tar_root_states[env_ids, :2] + self.delta_ramdom_xy
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)
@@ -474,39 +571,46 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.simulator.tar_root_states[env_ids, 10:13] = ref_tar_root_ang_vel + torch.randn_like(ref_tar_root_ang_vel) * root_ang_vel_noise
 
 
-    def small_random_quaternions(self, n, max_angle):
-            axis = torch.randn((n, 3), device=self.device)
-            axis = axis / torch.norm(axis, dim=1, keepdim=True)  # Normalize axis
-            angles = max_angle * torch.rand((n, 1), device=self.device)
-            
-            # Convert angle-axis to quaternion
-            sin_half_angle = torch.sin(angles / 2)
-            cos_half_angle = torch.cos(angles / 2)
-            
-            q = torch.cat([sin_half_angle * axis, cos_half_angle], dim=1)  
-            return q
+    def _axis2axis_batch(self, target_pos, target_rot, p_old_axis):
+        batch_size = target_pos.shape[0]
 
-    def _reset_dofs(self, env_ids):
-        """ Resets DOF position and velocities of selected environmments
-        Positions are randomly selected within 0.5:1.5 x default positions.
-        Velocities are set to zero.
+        pelvis_rot_normalized = target_rot / torch.norm(target_rot, dim=-1, keepdim=True)
 
-        Args:
-            env_ids (List[int]): Environemnt ids
-        """
+        x, y, z, w = pelvis_rot_normalized.unbind(dim=-1)
+        R_world_pelvis = torch.stack([
+            1 - 2*(y**2 + z**2), 2*(x*y - z*w),     2*(x*z + y*w),
+            2*(x*y + z*w),     1 - 2*(x**2 + z**2), 2*(y*z - x*w),
+            2*(x*z - y*w),     2*(y*z + x*w),     1 - 2*(x**2 + y**2)
+        ], dim=-1).reshape(batch_size, 3, 3)
+        T_world_pelvis = torch.zeros(batch_size, 4, 4, device=self.device)
+        T_world_pelvis[:, :3, :3] = R_world_pelvis
+        T_world_pelvis[:, :3, 3] = target_pos
+        T_world_pelvis[:, 3, 3] = 1
+        T_pelvis_world = torch.inverse(T_world_pelvis)
+        p_world_homo = torch.cat([p_old_axis, torch.ones(batch_size, 1, device=self.device)], dim=-1)
+        p_world_homo_unsqueezed = p_world_homo.unsqueeze(-1)
+        target_pos_new = torch.matmul(T_pelvis_world, p_world_homo_unsqueezed).squeeze(-1)
+        target_pos_new = target_pos_new[:, :3]
+        return target_pos_new
+    
+    def _axis2axis(self,env_ids, target_pos, target_rot, p_old_axis):
+        pelvis_rot_normalized = target_rot / torch.norm(target_rot)
+        x, y, z, w = pelvis_rot_normalized.unbind(dim=-1)
+        R_world_pelvis = torch.stack([
+            1 - 2*(y**2 + z**2), 2*(x*y - z*w),     2*(x*z + y*w),
+            2*(x*y + z*w),     1 - 2*(x**2 + z**2), 2*(y*z - x*w),
+            2*(x*z - y*w),     2*(y*z + x*w),     1 - 2*(x**2 + y**2)
+        ], dim=-1).reshape(3, 3)
 
-        motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
-        offset = self.env_origins
-        motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
+        T_world_pelvis = torch.eye(4)
+        T_world_pelvis[:3, :3] = R_world_pelvis
+        T_world_pelvis[:3, 3] = target_pos
+        T_pelvis_world = torch.inverse(T_world_pelvis).to(self.device)  #世界坐标系到 root 坐标系的变换​
 
-        dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
-        dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
-        dof_pos = motion_res['dof_pos'][env_ids]
-        dof_vel = motion_res['dof_vel'][env_ids]
-        self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
-        self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
-
-
+        p_world_homo = torch.cat([p_old_axis, torch.tensor([1.0]).to(self.device)])
+        target_pos  = (T_pelvis_world @ p_world_homo)[:3]
+        return target_pos
+    
     def _post_physics_step(self):
         super()._post_physics_step()
 

@@ -14,6 +14,7 @@ from hydra.utils import instantiate, get_class
 
 from humanoidverse.utils.torch_utils import to_torch, torch_rand_float
 from termcolor import colored
+from humanoidverse.utils.interDR import *
 
 # Base class for RL tasks
 class BaseTask():
@@ -63,6 +64,9 @@ class BaseTask():
         # self._create_sim()
         self.simulator.prepare_sim()
         # if running with a viewer, set up keyboard shortcuts and camera
+        #self.interDR = InteractionDomainRandomization(self.simulator, device=self.device)
+        #self.arm_ik = G1_29_ArmIK(Visualization=False)
+
         self.viewer = None
         if self.headless == False:
             self.debug_viz = False
@@ -193,6 +197,21 @@ class BaseTask():
         left_hand_names = self.config.robot.left_hand_name #[s for s in self.body_names if self.config.robot.left_hand_name in s] 
         self.contact_Bodies = self.config.robot.contact_Bodies #[s for s in self.body_names if self.config.robot.contact_Bodies in s]
         self.key_Bodies = self.config.robot.key_Bodies
+        self.hand_name = self.config.robot.hand_name
+        self.ik_hand_dof_names = ['left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint', 'left_wrist_roll_joint',
+            'left_wrist_pitch_joint','left_wrist_yaw_joint','right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint', 'right_wrist_roll_joint',
+            'right_wrist_pitch_joint','right_wrist_yaw_joint'
+        ]
+        self.ik_hand_body_names = ['left_shoulder_pitch_link','left_wrist_yaw_link','right_shoulder_pitch_link','right_wrist_yaw_link']
+
+        self.hand_indices = torch.zeros(len(self.hand_name), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(self.hand_name)):
+            self.hand_indices[i] = self.simulator.find_rigid_body_indice(self.hand_name[i])
+
+        self.ik_hand_body_indices = torch.zeros(len(self.ik_hand_body_names), dtype=torch.long, device=self.device, requires_grad=False)
+        for i in range(len(self.ik_hand_body_names)):
+            self.ik_hand_body_indices[i] = self.simulator.find_rigid_body_indice(self.ik_hand_body_names[i])
+
         penalized_contact_names = []
         for name in self.config.robot.penalize_contacts_on:
             penalized_contact_names.extend([s for s in self.body_names if name in s])
@@ -228,6 +247,7 @@ class BaseTask():
         for i in range(len(self.key_Bodies)):
             self.key_Bodies_indices[i] = self.simulator.find_rigid_body_indice(self.key_Bodies[i])
         print(self.key_Bodies_indices)
+
         self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(penalized_contact_names)):
             self.penalised_contact_indices[i] = self.simulator.find_rigid_body_indice(penalized_contact_names[i])
@@ -235,7 +255,8 @@ class BaseTask():
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.simulator.find_rigid_body_indice(termination_contact_names[i])
-            
+        
+        self.torso_body_id  = self.simulator.find_rigid_body_indice("torso_link")
         if self.config.robot.has_upper_body_dof:
             # maintain upper/lower dof idxs
             self.upper_dof_names = self.config.robot.upper_dof_names
@@ -243,7 +264,7 @@ class BaseTask():
             self.upper_dof_indices = [self.dof_names.index(dof) for dof in self.upper_dof_names]
             self.lower_dof_indices = [self.dof_names.index(dof) for dof in self.lower_dof_names]
             self.waist_dof_indices = [self.dof_names.index(dof) for dof in self.config.robot.waist_dof_names]
-
+        self.ik_hand_dof_indices = [self.dof_names.index(dof) for dof in self.ik_hand_dof_names]
         if self.config.robot.has_torso:
             self.torso_name = self.config.robot.torso_name
             self.torso_index = self.simulator.find_rigid_body_indice(self.torso_name)
