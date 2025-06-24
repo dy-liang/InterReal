@@ -444,9 +444,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         Args:
             env_ids (List[int]): Environemnt ids
         """
-        #import time
-        #time.sleep(5)
-
         motion_times = (self.episode_length_buf) * self.dt + self.motion_start_times # next frames so +1
         offset = self.env_origins
         motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
@@ -467,19 +464,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         ref_dof_pos = motion_res['dof_pos']
         contact_thres = 0.1
         self.delta_ramdom_xy = torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device)
-        # if self.flag:
-        #     self.delta_ramdom_xy = torch_utils.to_torch([[0.1,0.1]]) #torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device) #torch_utils.to_torch([[0.1,0.1]]) #
-        #     self.flag = False
-        # else:
-        #     self.delta_ramdom_xy = torch_utils.to_torch([[-0.1,-0.1]])
-        #     self.flag = True
-        #print("RESET random value:", self.delta_ramdom_xy)
+
         contact_hand = torch.any(torch.abs(self.simulator.contact_forces[env_ids]) > 0.1, dim=-1).float()[:,self.hand_indices]
         contact_hand_any = torch.any(contact_hand > contact_thres, dim=-1).float()
-        ids = torch.nonzero(contact_hand_any==1).squeeze(-1) 
-        #print(ids)
+        ids = torch.nonzero(contact_hand_any==1).squeeze(-1) # reset id/env_ids
+        self.to_interDR_ids = ids 
         if len(ids):
-            print("RESET!! env num:", len(ids))
+            #print("RESET!! env num:", len(ids))
             p_old_axis_l = ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[1]]     # 左右手末端pos(world 坐标系)
             p_old_axis_r =  ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[3]]  
             p_old_axis_l[:, :2] +=self.delta_ramdom_xy[ids]
@@ -490,18 +481,25 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
             target_pos_l = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_l).cpu().numpy() # world 坐标系 -> torso 坐标系
             target_pos_r = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_r).cpu().numpy()
+            origin_q = ref_dof_pos[env_ids][:,self.ik_hand_dof_indices].cpu().numpy()
             #print("Give 0 frame arm+box pos:",p_old_axis_l, p_old_axis_r, motion_res["o_rb_pos"][env_ids, :2] + self.delta_ramdom_xy)
             #print(torch.norm(p_old_axis_l-p_old_axis_r, dim=-1), torch.norm(target_pos_l-target_pos_r, dim=-1))
-            #ref_hand_dof_pos = ref_dof_pos[env_ids][:,self.ik_hand_dof_indices].cpu().numpy()
-            #sol_q_batch = self.arm_ik.get_interDR_dof14(env_ids, target_pos_l, target_pos_r, ref_hand_dof_pos) # (num_env,14)
+
             t = time.time()
-            current_q_list = [np.zeros(14).copy() for _ in range(len(ids))]
-            sol_q_batch, _ = get_interDR_dof14_parallel(
-                env_ids=range(len(ids.cpu().numpy())),
-                new_left_pos=target_pos_l,  # shape: [N, 3]
-                new_right_pos=target_pos_r, # shape: [N, 3]
-                current_q_list=current_q_list,
-            )
+            sol_q_batch, ik_succeed_id = self.arm_ik.get_interDR_dof14(range(len(ids.cpu().numpy())), target_pos_l, target_pos_r, origin_q) # (num_env,14)
+            self.ik_succeed_id = ik_succeed_id
+
+            #### parallel ####
+            # current_q_list = [np.zeros(14).copy() for _ in range(len(ids))]
+            # sol_q_batch, _ = get_interDR_dof14_parallel(
+            #     env_ids=range(len(ids.cpu().numpy())),
+            #     new_left_pos=target_pos_l,  # shape: [N, 3]
+            #     new_right_pos=target_pos_r, # shape: [N, 3]
+            #     current_q_list=current_q_list,
+            # )
+            #print(time.time() - t)
+
+            # update
             self.simulator.dof_pos[env_ids[ids], 15:22] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, :7]
             self.simulator.dof_pos[env_ids[ids], 29:36] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, 7:]
 
@@ -550,8 +548,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_vel = motion_res['root_vel'][env_ids]
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
+            if len(self.to_interDR_ids) and len(self.ik_succeed_id):  # only the succeed_id need to be randomized
+                self.simulator.tar_root_states[env_ids[self.to_interDR_ids[self.ik_succeed_id]], :2] += self.delta_ramdom_xy[self.to_interDR_ids[self.ik_succeed_id]]
+
             self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
-            self.simulator.tar_root_states[env_ids, :2] = self.simulator.tar_root_states[env_ids, :2] + self.delta_ramdom_xy
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)

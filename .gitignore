@@ -86,3 +86,5 @@ osmocheckpoints
 humanoidverse/deploy/deploy_mujoco/logs_eval
 humanoidverse/data/key_config_model_file/43dof_RandomStart_Noise
 humanoidverse/data/key_config_model_file/43dof_RandomStart_noNoise
+humanoidverse/data/key_config_model_file/motions
+humanoidverse/data/motions/motion_aug/

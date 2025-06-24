@@ -231,12 +231,11 @@ class G1_29_ArmIK:
                     )
                 )
 
-    def solve_ik(self, left_wrist, right_wrist, current_lr_arm_motor_q = None, current_lr_arm_motor_dq = None):
+    def solve_ik(self, left_wrist, right_wrist, origin_q, current_lr_arm_motor_q = None, current_lr_arm_motor_dq = None):
         if current_lr_arm_motor_q is not None:
             self.init_data = current_lr_arm_motor_q
         self.opti.set_initial(self.var_q, self.init_data)
 
-        # left_wrist, right_wrist = self.scale_arms(left_wrist, right_wrist)
         if self.Visualization:
             self.vis.viewer['L_ee_target'].set_transform(left_wrist)   # for visualization
             self.vis.viewer['R_ee_target'].set_transform(right_wrist)  # for visualization
@@ -260,12 +259,10 @@ class G1_29_ArmIK:
 
             self.init_data = sol_q
 
-            #sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
-
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
-            return sol_q
+            return sol_q, 0
         
         except Exception as e:
             print(f"ERROR in convergence, plotting debug info.{e}")
@@ -281,34 +278,34 @@ class G1_29_ArmIK:
 
             self.init_data = sol_q
 
-            sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
-
             print(f"sol_q:{sol_q} \nmotorstate: \n{current_lr_arm_motor_q} \nleft_pose: \n{left_wrist} \nright_pose: \n{right_wrist}")
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
             # return sol_q, sol_tauff
-            return current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)
-
-    def get_interDR_dof14(self, env_ids, new_left_pos, new_right_pos, cur_pos):
+            return origin_q, 1
+        
+    def get_interDR_dof14(self, env_ids, new_left_pos, new_right_pos, origin_q):
         # initial positon
         ik_nums = len(env_ids)
         new_left_pos[:,-1] = new_left_pos[:,-1] + 0.054 
         new_right_pos[:,-1] = new_right_pos[:,-1] + 0.054
 
         sol_q_all = np.zeros((ik_nums,14))
+        ik_succeed_id = []
 
         for env in range(ik_nums): 
             L_tf_target = pin.SE3(pin.Quaternion(1,0,0,0),new_left_pos[env],)
             R_tf_target = pin.SE3(pin.Quaternion(1,0,0,0),new_right_pos[env],)
             step = 0
             while True:
-                sol_q = self.solve_ik(L_tf_target.homogeneous, R_tf_target.homogeneous, cur_pos[env])
+                sol_q, failed_flag = self.solve_ik(L_tf_target.homogeneous, R_tf_target.homogeneous, origin_q=origin_q[env])
                 step += 1
-                if step > 1:
+                if step > 4 or failed_flag:
                     break
+            if not failed_flag: ik_succeed_id.append(env)
             sol_q_all[env] = sol_q
-        return sol_q_all
+        return sol_q_all, np.array(ik_succeed_id)
     
 def get_interDR_dof14_parallel(env_ids, new_left_pos, new_right_pos, current_q_list):
     ik_nums = len(env_ids)
@@ -337,19 +334,20 @@ def _solve_single_env(args):
     global _global_ik_solver
     env_id, new_left_pos_env, new_right_pos_env, current_q_env = args
     
-    
     new_left_pos_env[-1] += 0.054
     new_right_pos_env[-1] += 0.054
     
     L_tf_target = pin.SE3(pin.Quaternion(1, 0, 0, 0), new_left_pos_env)
     R_tf_target = pin.SE3(pin.Quaternion(1, 0, 0, 0), new_right_pos_env)
     for i in range(5):
-        sol_q = _global_ik_solver.solve_ik(
+        sol_q, failed_flag = _global_ik_solver.solve_ik(
             L_tf_target.homogeneous,
             R_tf_target.homogeneous,
             #current_lr_arm_motor_q=current_q_env
         )
+        if failed_flag: break
     return env_id, sol_q
+
 def test_ik():
     t = time.time()
 
