@@ -91,6 +91,7 @@ class MotionLibHoi(MotionLibRobot):
         body_contact0, body_contact1 = self.body_contact[f0l], self.body_contact[f1l]
         obj_contact0, obj_contact1 = self.obj_contact[f0l], self.obj_contact[f1l]
         ig0, ig1 = self.ig[f0l], self.ig[f1l]
+        dof0, dof1 = self.dof[f0l], self.dof[f1l]
 
 
         o_rb_rot = slerp(o_rb_rot0, o_rb_rot1, blend_exp)
@@ -105,6 +106,7 @@ class MotionLibHoi(MotionLibRobot):
         body_contact = (1.0 - blend_exp) * body_contact0 + blend_exp * body_contact1
         obj_contact = (1.0 - blend_exp) * obj_contact0 + blend_exp * obj_contact1
         ig = (1.0 - blend_exp) * ig0 + blend_exp * ig1
+        dof = (1.0 - blend_exp) * dof0 + blend_exp * dof1
 
 
         if "gts_t" in self.__dict__:
@@ -172,7 +174,8 @@ class MotionLibHoi(MotionLibRobot):
             "o_lin_vel": o_lin_vel[..., 0, :],     # 线速度
             "body_contact": body_contact,
             "obj_contact": obj_contact[..., 0, :],
-            "ig": ig[..., 0, :]
+            "ig": ig[..., 0, :],
+            "dof": dof[..., 0, :]
         })
         return return_dict
     
@@ -215,10 +218,11 @@ class MotionLibHoi(MotionLibRobot):
             body_contact = to_torch(curr_file['body_contact']).clone()[start:end]
             obj_contact = to_torch(curr_file['obj_contact']).clone()[start:end].unsqueeze(1)
             ig = to_torch(curr_file['ig']).clone()[start:end].unsqueeze(1)
+            dof = to_torch(curr_file['dof']).clone()[start:end].unsqueeze(1)
             # global_angular_vel = SkeletonMotion._compute_angular_velocity(obj_rot, time_delta=1 / curr_file['fps'])
             # linear_vel = SkeletonMotion._compute_velocity(obj_trans, time_delta=1 / curr_file['fps'])
             quest_motion = {"obj_root_trans": obj_trans, "obj_root_rot": obj_rot, "obj_linear_vel": linear_vel, "obj_angular_vel": global_angular_vel,  \
-                             "body_contact": body_contact, "obj_contact": obj_contact, "ig":ig}
+                             "body_contact": body_contact, "obj_contact": obj_contact, "ig":ig, "dof":dof}
             # ================================
             
             if self.mesh_parsers is not None:
@@ -255,7 +259,7 @@ class MotionLibHoi(MotionLibRobot):
         if flags.real_traj:
             self.q_gts, self.q_grs, self.q_gavs, self.q_gvs = [], [], [], []
         o_gts, o_grs, o_gavs, o_gvs = [], [], [], []
-        body_contact, obj_contact, ig = [], [], []
+        body_contact, obj_contact, ig, dof = [], [], [], []
         total_len = 0.0
         self.num_joints = len(self.skeleton_tree.node_names)
         num_motion_to_load = self.num_envs
@@ -304,6 +308,7 @@ class MotionLibHoi(MotionLibRobot):
             body_contact.append(curr_motion.quest_motion['body_contact'])
             obj_contact.append(curr_motion.quest_motion['obj_contact'])
             ig.append(curr_motion.quest_motion['ig'])
+            dof.append(curr_motion.quest_motion['dof'])
             # ===============================
             
             if self.has_action:
@@ -344,6 +349,7 @@ class MotionLibHoi(MotionLibRobot):
         self.body_contact = torch.cat(body_contact, dim=0).float().to(self._device)
         self.obj_contact = torch.cat(obj_contact, dim=0).float().to(self._device)
         self.ig = torch.cat(ig, dim=0).float().to(self._device)
+        self.dof = torch.cat(dof, dim=0).float().to(self._device)
 
 
         if "global_translation_extend" in motions[0].__dict__:

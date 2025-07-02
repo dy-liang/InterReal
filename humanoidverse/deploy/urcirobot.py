@@ -49,7 +49,7 @@ class URCIRobot:
     def __init__(self, cfg: CfgType):
         self.BYPASS_ACT = cfg.deploy.BYPASS_ACT
         self.SWITCH_EMA = cfg.deploy.SWITCH_EMA
-        
+
         self.cfg: OmegaConf = cfg
         self._obs_cfg_obs = cfg.obs
         self.device: str = "cpu"
@@ -62,6 +62,8 @@ class URCIRobot:
         self.clip_action_limit: float = cfg.robot.control.action_clip_value
         self.clip_observations: float = cfg.env.config.normalization.clip_observations
         self.action_scale: float = cfg.robot.control.action_scale
+        self.dof_idx_23_to_29: List[int] = cfg.deploy.dof_idx_23_to_29
+        self.dof_idx_23_of_29: List[int] = cfg.deploy.dof_idx_23_of_29 # trained dof idx in 29
         if self.load_motion:
             data_seq = joblib.load(cfg.env.config.robot.motion.motion_file)
             self.obj_name = list(data_seq.keys())
@@ -69,12 +71,12 @@ class URCIRobot:
             self._motion_lib.load_motions(random_sample=False)
             self.motion_duration = self._motion_lib.get_motion_length()[0]
             self.motion_start_times = 0
-            self.use_motion_start_dof_pos = False
+            self.use_motion_start_dof_pos = True
             self.open_dof_indices = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42] # 20
             self.hand_indices = [22, 23, 24, 25, 26, 27, 28,  36, 37, 38, 39, 40, 41, 42] #14
             self.robot_29dof_indices = [i for i in range(self.num_actions) if i not in self.hand_indices] #29
             self.rl_action_indices = [i for i in range(self.num_actions) if i not in self.open_dof_indices] #23
-            
+
         self._make_init_pose()
         self._make_buffer()
         if cfg.log_task_name == "motion_tracking":
@@ -113,6 +115,7 @@ class URCIRobot:
                 
                 if cur_pid != self._ref_pid or self._ref_pid == -2:
                     if self._ref_pid == -2:
+                        print("")
                         self.Reset()
                         self._ref_pid = 0
                         t1 = time.time()
@@ -132,22 +135,18 @@ class URCIRobot:
                         self.old_act = self.act.copy()
                     # print('Debug: ',self.Obs()['actor_obs'])
                     # breakpoint()
-
-                    
-                    breakpoint()
                 
                 action = policy_fn(self.Obs())[0]
                 action = self.Check_add_open_actions(action)
 
-                if self.BYPASS_ACT: action = np.zeros_like(action)
+                #if self.BYPASS_ACT: action = np.zeros_like(action)
                 
-                if self.SWITCH_EMA and self.timer <10:
-                    self.old_act = self.old_act * 0.9 + action * 0.1
-                    action = self.old_act
+                # if self.SWITCH_EMA and self.timer <10:
+                #     self.old_act = self.old_act * 0.9 + action * 0.1
+                #     action = self.old_act
                     
-                
                 self.ApplyAction(action)
-                
+
                 self.TrySaveMotionStep()
 
                 if self.motion_len > 0 and self.ref_motion_phase > 1.0:
@@ -240,12 +239,11 @@ class URCIRobot:
     
     def ApplyAction(self, action): 
         self.timer += 1
-        
         self.act = action.copy()
         target_q = np.clip(action, -self.clip_action_limit, self.clip_action_limit) + self.dof_init_pose
-        
+
         self._apply_action(target_q)
-        
+
         self.UpdateObs()
 
     def Check_add_open_actions(self, action):
@@ -255,13 +253,16 @@ class URCIRobot:
 
             # open loop control data
             self.ref_joint_pos = motion_res["dof_pos"][0][self.open_dof_indices] #
-            hand_motion_dof = self.ref_joint_pos.view(2,-1).cpu().numpy()
-            wirst = hand_motion_dof[:,:3]
-            thumb = hand_motion_dof[:,7:]
-            middle = hand_motion_dof[:,5:7]
-            index = hand_motion_dof[:,3:5]
-            thumb[:,0] = thumb[:,0] + 1.0  #TODO: calibration again
-            fix_motion_dof = np.concatenate((wirst,thumb,middle,index),axis=-1).reshape(-1)
+            if self.cfg.simulator.config.name == "real":
+                hand_motion_dof = self.ref_joint_pos.view(2,-1).cpu().numpy()
+                wirst = hand_motion_dof[:,:3]
+                thumb = hand_motion_dof[:,7:]
+                middle = hand_motion_dof[:,5:7]
+                index = hand_motion_dof[:,3:5]
+                thumb[:,0] = thumb[:,0] + 1.0  #TODO: calibration again
+                fix_motion_dof = np.concatenate((wirst,thumb,middle,index),axis=-1).reshape(-1)
+            else:
+                fix_motion_dof = self.ref_joint_pos
 
             hybrid_action = np.zeros((self.num_actions),dtype=np.float32)
             hybrid_action[self.open_dof_indices] = fix_motion_dof
@@ -280,7 +281,8 @@ class URCIRobot:
     def SetObsCfg(self, obs_cfg: ObsCfg):
         if isinstance(obs_cfg, DictConfig):
             self._obs_cfg_obs = obs_cfg
-            self.motion_len = self._obs_cfg_obs.motion_len
+            #self.motion_len = self._obs_cfg_obs.motion_len
+            self.motion_len = self.motion_duration
         elif isinstance(obs_cfg, Callable):
             self._obs_cfg_obs = obs_cfg
             self.motion_len = -1
@@ -307,7 +309,7 @@ class URCIRobot:
         
         self.obs_buf_dict_raw = {}
         
-        noise_extra_scale = 0.
+        noise_extra_scale = 1.
         for obs_key, obs_config in obs_cfg_obs.obs_dict.items():
             if not obs_key=='actor_obs': continue
             self.obs_buf_dict_raw[obs_key] = dict()
@@ -319,28 +321,19 @@ class URCIRobot:
         for obs_key, obs_config in obs_cfg_obs.obs_dict.items():
             if not obs_key=='actor_obs': continue
             obs_keys = sorted(obs_config)
-            # (Pdb) sorted(obs_config)
-            # ['actions', 'base_ang_vel', 'base_lin_vel', 'dif_local_rigid_body_pos', 'dof_pos', 'dof_vel', 'dr_base_com', 'dr_ctrl_delay', 'dr_friction', 'dr_kd', 'dr_kp', 'dr_link_mass', 'history_critic', 'local_ref_rigid_body_pos', 'projected_gravity', 'ref_motion_phase']
-            
-            # print("obs_keys", obs_keys, self.obs_buf_dict_raw[obs_key])            
-            # print("obs_keys:", obs_keys)
-            # print("obs shape:", {key: self.obs_buf_dict_raw[obs_key][key].shape for key in obs_keys})
-
             self.obs_buf_dict[obs_key] = torch.cat([self.obs_buf_dict_raw[obs_key][key] for key in obs_keys], dim=-1)
-            
             
         clip_obs = self.clip_observations
         for obs_key, obs_val in self.obs_buf_dict.items():
             if not obs_key=='actor_obs': continue
             self.obs_buf_dict[obs_key] = torch.clip(obs_val, -clip_obs, clip_obs)
-        # breakpoint()
 
     def UpdateObsForHistory(self):
         hist_cfg_obs = self.cfg.obs
         
         self.hist_obs_dict = {}
         
-        noise_extra_scale = 0.
+        noise_extra_scale = 1. #0
         # Compute history observations
         history_obs_list = self.history_handler.history.keys()
         # print(f"history_obs_list: {history_obs_list}")
@@ -393,7 +386,6 @@ class URCIRobot:
         if self.use_motion_start_dof_pos:
             motion_res = self._motion_lib.get_motion_state([0], torch.tensor(0))
             motion_start_dof_pos = motion_res['dof_pos'][0]
-            print(motion_start_dof_pos)
             assert len(motion_start_dof_pos) == 43, "please check 43 motion dofs" #dyliang 23
             self.dof_motion_init_pose = np.array(motion_start_dof_pos)
         if self.cfg.robot.with_open_obs == False:
@@ -402,7 +394,7 @@ class URCIRobot:
         self.tau_limit = np.array(dof_effort_limit_list)
         
         
-        self.kp = np.zeros(self.num_dofs)
+        self.kp = np.zeros(self.num_dofs) # 43
         self.kd = np.zeros(self.num_dofs)
         
         
@@ -420,9 +412,9 @@ class URCIRobot:
         
     def _make_buffer(self):
         self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
-        
-        self.q = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs
-        self.dq = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs
+
+        self.q = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs len(self.dof_idx_23_to_29)
+        self.dq = np.zeros(len(self.dof_idx_23_to_29)) #self.num_dofs len(self.dof_idx_23_to_29)
         self.quat = np.zeros(4)  # XYZW
         self.omega = np.zeros(3)
         self.gvec = np.zeros(3)
@@ -430,6 +422,7 @@ class URCIRobot:
         self._obs_local_obj_pos = np.zeros((3)) 
         self._obs_global_obj_pos = np.zeros((3)) 
         self._obs_local_obj_vel = np.zeros((3))
+        self._obs_global_obj_vel = np.zeros((3))
         self.global_obj_rot = np.zeros((4))
         self.act = np.zeros(self.num_dofs)
         
@@ -438,7 +431,7 @@ class URCIRobot:
         ...
         
     def _make_motionlib(self):
-        self.motion_len = self.cfg.obs.motion_len #self.motion_length[0] #
+        self.motion_len =  self.motion_duration #self.cfg.obs.motion_len
         ...
         
         
@@ -550,9 +543,13 @@ class URCIRobot:
         return np2torch(self.gvec)
     
     def _get_obs_dof_pos(self,):
+        if len(self.q) == 43: # mujoco
+            return np2torch(self.q[self.rl_action_indices] - self.dof_init_pose[self.rl_action_indices])
         return np2torch(self.q[self.dof_idx_23_of_29] - self.dof_init_pose[self.rl_action_indices])
     
     def _get_obs_dof_vel(self,):
+        if len(self.dq) == 43: # mujoco
+            return np2torch(self.dq[self.rl_action_indices])
         return np2torch(self.dq[self.dof_idx_23_of_29])
     
     def _get_obs_local_tar_pos(self,):
@@ -563,6 +560,9 @@ class URCIRobot:
     
     def _get_obs_local_tar_vel(self,):
         return np2torch(self._obs_local_obj_vel)
+
+    def _get_obs_global_tar_vel(self,):
+        return np2torch(self._obs_global_obj_vel)
     
     def _get_obs_tar_rot(self,):
         return np2torch(self.global_obj_rot)

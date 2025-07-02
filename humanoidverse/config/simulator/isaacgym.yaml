@@ -23,7 +23,7 @@ simulator:
         contact_offset: 0.02 # 0.1
         rest_offset: 0.0
         bounce_threshold_velocity: 0.2 # 0.5
-        max_depenetration_velocity: 50. #1.0
+        max_depenetration_velocity: 1. #1.0
         default_buffer_size_multiplier: 20. #5
         contact_collection: 2
         max_gpu_contact_pairs: 16777216

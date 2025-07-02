@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python humanoidverse/train_agent.py \
 +simulator=isaacgym \
@@ -10,8 +10,8 @@ python humanoidverse/train_agent.py \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
 num_envs=4096 \
 project_name=MotionTracking \
-experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_Moig_interDR_50x5 \
-robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl" \
+experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_Moig_interDR_50x5_Pos \
+robot.motion.motion_file="/home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/motion_largebox_0dot1_5x5_dr.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \
@@ -25,5 +25,5 @@ robot.asset.self_collisions=0 \
 robot.hybrid_control_mode=True \
 headless=True
  
-#"humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl" 
+#"humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl"  motion_largebox_0dot1_5x5_dr
 # -m debugpy --listen 5678 --wait-for-client

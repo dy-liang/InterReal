@@ -32,8 +32,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     def __init__(self, config, device):
         self.init_done = False
         self.debug_viz = False
-        self.add_inter_dr = True
-        init_ik_worker()
+        self.add_inter_dr = False
+        #init_ik_worker()
         #test_ik()
         super().__init__(config, device)
 
@@ -205,7 +205,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         super()._check_termination()
         if self.config.termination.terminate_when_motion_far:
             self.reset_buf |= torch.any(torch.norm(self.dif_global_body_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
-            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold+0.2, dim=-1)
+            self.reset_buf |= torch.any(torch.norm(self.dif_global_tar_pos, dim=-1) > self.terminate_when_motion_far_threshold, dim=-1)
             # log current motion far threshold
             if self.config.termination_curriculum.terminate_when_motion_far_curriculum:
                 self.log_dict["terminate_when_motion_far_threshold"] = torch.tensor(self.terminate_when_motion_far_threshold, dtype=torch.float)
@@ -233,6 +233,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
+            #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
             self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
             #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
@@ -244,8 +245,9 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         super()._pre_compute_observations_callback()
 
         # if self.episode_length_buf[0]==1:
-        #     print("SIM 1 frame arm+box pos:",self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[1]],self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[3]],self.simulator.tar_root_states[:, :3])
-        #     print("\n")
+        #     print("sim pos", self.simulator.tar_root_states[:, :2])
+            #print("SIM 1 frame arm+box pos:",self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[1]],self.simulator._rigid_body_pos[:,self.ik_hand_body_indices[3]],self.simulator.tar_root_states[:, :3])
+            #print("\n")
         offset = self.env_origins
         B = self.motion_ids.shape[0]
         motion_times = (self.episode_length_buf + 1) * self.dt + self.motion_start_times # next frames so +1 
@@ -260,7 +262,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_body_rot_extend[:] = ref_body_rot_extend # for visualization and analysis
 
         ref_body_ang_vel_extend = motion_res["body_ang_vel_t"] # [num_envs, num_markers, 3]
-        ref_joint_pos = motion_res["dof_pos"] # [num_envs, num_dofs]
+        ref_joint_pos = motion_res["dof"] # [num_envs, num_dofs]
         ref_joint_vel = motion_res["dof_vel"] # [num_envs, num_dofs]
         self.ref_robot_root_pos = motion_res['root_pos']
         self.ref_robot_root_rot = motion_res['root_rot']
@@ -450,10 +452,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
         dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
-        dof_pos = motion_res['dof_pos'][env_ids]
+        dof_pos = motion_res['dof'][env_ids]
         dof_vel = motion_res['dof_vel'][env_ids]
         self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
         self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
+        #print("motion dof pos:", motion_res['dof'][:,self.ik_hand_dof_indices].cpu().numpy())
 
         if self.add_inter_dr: self.interation_dr(env_ids, motion_res)
 
@@ -461,16 +464,16 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ref_body_pos_extend = motion_res["rg_pos_t"]
         ref_body_rot_extend = motion_res["rg_rot_t"] 
-        ref_dof_pos = motion_res['dof_pos']
+        ref_dof_pos = motion_res['dof']
         contact_thres = 0.1
-        self.delta_ramdom_xy = torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device)
-
+        #self.delta_ramdom_xy = torch_utils.torch_rand_float(-0.1, 0.1, (len(env_ids), 2), device=self.device)
+        self.delta_ramdom_xy = torch_utils.to_torch([[-0.10,-0.10]])
         contact_hand = torch.any(torch.abs(self.simulator.contact_forces[env_ids]) > 0.1, dim=-1).float()[:,self.hand_indices]
-        contact_hand_any = torch.any(contact_hand > contact_thres, dim=-1).float()
+        contact_hand_any = torch.any(contact_hand < contact_thres, dim=-1).float()
         ids = torch.nonzero(contact_hand_any==1).squeeze(-1) # reset id/env_ids
         self.to_interDR_ids = ids 
         if len(ids):
-            #print("RESET!! env num:", len(ids))
+            print("RESET!! env num:", len(ids))
             p_old_axis_l = ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[1]]     # 左右手末端pos(world 坐标系)
             p_old_axis_r =  ref_body_pos_extend[env_ids[ids],self.ik_hand_body_indices[3]]  
             p_old_axis_l[:, :2] +=self.delta_ramdom_xy[ids]
@@ -482,7 +485,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             target_pos_l = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_l).cpu().numpy() # world 坐标系 -> torso 坐标系
             target_pos_r = self._axis2axis_batch(torso_pos, torso_rot, p_old_axis_r).cpu().numpy()
             origin_q = ref_dof_pos[env_ids][:,self.ik_hand_dof_indices].cpu().numpy()
-            #print("Give 0 frame arm+box pos:",p_old_axis_l, p_old_axis_r, motion_res["o_rb_pos"][env_ids, :2] + self.delta_ramdom_xy)
+            print("Give 0 frame arm+box pos:",p_old_axis_l, p_old_axis_r, motion_res["o_rb_pos"][env_ids, :2] + self.delta_ramdom_xy)
+            print(target_pos_l, target_pos_r, origin_q)
             #print(torch.norm(p_old_axis_l-p_old_axis_r, dim=-1), torch.norm(target_pos_l-target_pos_r, dim=-1))
 
             t = time.time()
@@ -500,8 +504,9 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             #print(time.time() - t)
 
             # update
-            self.simulator.dof_pos[env_ids[ids], 15:22] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, :7]
-            self.simulator.dof_pos[env_ids[ids], 29:36] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, 7:]
+            print(sol_q_batch)
+            #self.simulator.dof_pos[env_ids[ids], 15:22] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, :7]
+            #self.simulator.dof_pos[env_ids[ids], 29:36] = torch.tensor(np.float32(sol_q_batch), device=self.device)[:, 7:]
 
     def _reset_root_states(self, env_ids):
         # reset root states according to the reference motion
@@ -548,10 +553,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             root_vel = motion_res['root_vel'][env_ids]
             root_ang_vel = motion_res['root_ang_vel'][env_ids]
 
-            if len(self.to_interDR_ids) and len(self.ik_succeed_id):  # only the succeed_id need to be randomized
-                self.simulator.tar_root_states[env_ids[self.to_interDR_ids[self.ik_succeed_id]], :2] += self.delta_ramdom_xy[self.to_interDR_ids[self.ik_succeed_id]]
 
             self.simulator.tar_root_states[env_ids, :3] = ref_tar_root_pos + torch.randn_like(ref_tar_root_pos) * root_pos_noise
+            if self.add_inter_dr and len(self.to_interDR_ids) and len(self.ik_succeed_id):  # only the succeed_id need to be randomized
+                self.simulator.tar_root_states[env_ids[self.to_interDR_ids[self.ik_succeed_id]], :2] += self.delta_ramdom_xy[self.to_interDR_ids[self.ik_succeed_id]]
+
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)

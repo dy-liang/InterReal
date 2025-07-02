@@ -268,6 +268,6 @@ class BaseTask():
         if self.config.robot.has_torso:
             self.torso_name = self.config.robot.torso_name
             self.torso_index = self.simulator.find_rigid_body_indice(self.torso_name)
-
+        print("hand_dof:", self.ik_hand_dof_indices)
     def setup_visualize_entities(self):
         pass

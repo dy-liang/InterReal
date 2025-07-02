@@ -26,11 +26,17 @@ class IsaacGym(BaseSimulator):
         self.object_density = 25.
         self.object_mass = 1.5
         data = joblib.load(config.robot.motion.motion_file)
-        self.object_name = list(data.keys())
-        print(self.object_name)
-        object_name_set = sorted(list(set(self.object_name)))
-        self.object_id = to_torch([object_name_set.index(name) for name in self.object_name], dtype=torch.long).cuda()
-        self.obj2motion = torch.stack([self.object_id == k for k in range(len(object_name_set))], dim=0)
+        if "aug" in list(data.keys())[1]:
+            self.object_name = list(["largebox"]*len(data.keys())) #list(data.keys())
+            motion_id_name = list([f"{i}" for i in range(len(data.keys()))])
+            self.object_id = to_torch([0]*len(data.keys()), dtype=torch.long).cuda()
+            tmp_id = to_torch([motion_id_name.index(name) for name in motion_id_name], dtype=torch.long).cuda() # 000
+            self.obj2motion = torch.stack([tmp_id == k for k in range(len(motion_id_name))], dim=0)
+        else:
+            self.object_name = list(data.keys())
+            object_name_set = sorted(list(set(self.object_name)))
+            self.object_id = to_torch([object_name_set.index(name) for name in self.object_name], dtype=torch.long).cuda()
+            self.obj2motion = torch.stack([self.object_id == k for k in range(len(object_name_set))], dim=0)
 
         self.asset_obj_root =  "humanoidverse/data/objects/" #self.robot_config.asset.asset_obj_root
         self.ball_size = 1.0 #cfg['env']['ballSize']

@@ -1,6 +1,8 @@
+export CKPTS=[humanoidverse/data/key_config_model_file/43dof_wObjPos/model_25100.onnx]
+
 python humanoidverse/urci.py \
 +simulator=real \
-+checkpoint=humanoidverse/data/key_config_model_file/43dof_wObjPos/model_25100.onnx \
++checkpoint=$CKPTS \
 +simulator.config.name=real \
 +simulator.config.sim.fps=500 \
 +simulator.config.sim.control_decimation=10 \

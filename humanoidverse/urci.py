@@ -330,15 +330,15 @@ def main(override_config: OmegaConf):
     RobotCls, pre_process_config, torch= setup_simulator(simulator_type)
 
     pre_process_config(main_cfg)
-    #[pre_process_config(cfg) for cfg in sub_configs]
+    [pre_process_config(cfg) for cfg in sub_configs]
     
     setup_logging2(main_cfg)
     
     cfg_policies= [get_policy_obs(cfg) for cfg in sub_configs]
     
     
-    
-    assert RobotCls.REAL==REAL, f" {RobotCls.REAL=} is not equal to {REAL=}!!! Please manually set the REAL flag in the header for safety."
+    if simulator_type == 'real':
+        assert RobotCls.REAL==REAL, f" {RobotCls.REAL=} is not equal to {REAL=}!!! Please manually set the REAL flag in the header for safety."
     robot:URCIRobot = RobotCls(main_cfg)
     
     robot.routing(cfg_policies)

@@ -8,7 +8,7 @@ import time
 import signal
 import sys
 from pathlib import Path
-
+import joblib
 import torch
 from humanoidverse.deploy import URCIRobot
 from scipy.spatial.transform import Rotation as R
@@ -22,7 +22,20 @@ from loguru import logger
 from humanoidverse.utils.helpers import np2torch, torch2np
 from humanoidverse.utils.real.rotation_helper import get_gravity_orientation, transform_imu_data, quaternion_to_euler_array
 from humanoidverse.data.robots.dtype import RobotExitException
+from io import BytesIO
+from lxml.etree import XMLParser, parse, ElementTree, Element, SubElement
+from lxml import etree
 
+from isaac_utils.rotations import (
+    my_quat_rotate,
+    calc_heading_quat_inv,
+    calc_heading_quat,
+    quat_mul,
+    quat_conjugate,
+    quat_to_angle_axis,
+    xyzw_to_wxyz,
+    wxyz_to_xyzw
+)
 import numpy as np
 
 def wrap_to_pi_float(angles:float):
@@ -210,7 +223,7 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
     RAND_NOISE: bool = False
     RAND_DELAY: bool = False
     RAND_MASK : bool = False
-    
+    HOI_interaction: bool = True
     noise_ratio = 3e-2
     # delay_ratio = (4, 25) # unit: ms
     delay_ratio = (4, 20) # unit: ms
@@ -222,8 +235,8 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
     # mk_rand_noise = lambda tens, ratio: tens * (1 + np.random.randn(*tens.shape).astype(tens.dtype) * ratio) # type: ignore
     
     # print_torque = lambda tau: print(f"tau (norm, max) = {torch.norm(tau):.2f}, \t{torch.max(tau):.2f}", end='\r')
-    print_torque = lambda tau: print(f"tau (norm, max) = {np.linalg.norm(tau):.2f}, \t{np.max(tau):.2f}", end='\r')
-    
+    print_torque = lambda tau: print(f"tau (norm, max) = {np.linalg.norm(tau):.2f}, \t{np.max(tau):.2f}", end='\r') 
+
     def __init__(self, cfg):
         super().__init__(cfg)
         
@@ -238,11 +251,28 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         # self._subtimer = 0
         
         
+        if self.HOI_interaction:
+            self.xml_path = os.path.join(cfg.robot.asset.asset_root, cfg.robot.asset.xml_file)
+            with open(self.xml_path, "rb") as f:
+                robot_xml_data = f.read()
+            data_seq = joblib.load(cfg.robot.motion.motion_file)
+            #self.obj_name = list(data_seq.keys())
+            self.obj_name = list(["largebox"])#list(data_seq.keys())
+            self.TASK_ID = 0
+            self._motion_lib.load_motions(random_sample=False)
+            self.motion_length = self._motion_lib.get_motion_length()[self.TASK_ID]
+            motion_res = self._motion_lib.get_motion_state([self.TASK_ID], torch.tensor(0))
+            init_obj_pose = motion_res['o_rb_pos'][0]
+            new_string = self.xml_add_obj(robot_xml_data,self.obj_name[self.TASK_ID], init_obj_pose)
+            xml_with_object = f"humanoidverse/data/robots/g1/g1_29dof_with_hand_obj.xml"
+            open(xml_with_object, "wb").write(new_string)
+            self.model = mujoco.MjModel.from_xml_path(xml_with_object)
+        else:
+            self.model = mujoco.MjModel.from_xml_path(os.path.join(cfg.robot.asset.asset_root, cfg.robot.asset.xml_file)) # type: ignore
         
-        self.model = mujoco.MjModel.from_xml_path(os.path.join(cfg.robot.asset.asset_root, cfg.robot.asset.xml_file)) # type: ignore
-        # self.model = mujoco.MjModel.from_xml_path('/home/bai/ASAP/humanoidverse/data/robots/g1/g1_23dof_lock_wrist_phys.xml')
         self.data = mujoco.MjData(self.model) # type: ignore
         self.model.opt.timestep = self.sim_dt
+        self.dof_names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.model.actuator_trnid[i, 0]) for i in range(self.model.nu)]
         if cfg.deploy.render:
             self.is_render = True
             if cfg.__contains__('recording') and cfg.recording:
@@ -257,65 +287,76 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         logger.info("Initializing Mujoco Robot")
         logger.info("Task Name: {}".format(cfg.log_task_name))
         logger.info("Robot Type: {}".format(cfg.robot.asset.robot_type))
-        
-        
         logger.info(f"decimation: {self.decimation}, sim_dt: {self.sim_dt}, dt: {self.dt}")
         logger.info(f"xml_file: {cfg.robot.asset.xml_file}")
         # print(self.decimation, self.sim_dt, self.dt)
         self.Reset()
-        
-        mujoco.mj_step(self.model, self.data) # type: ignore    
-
+        mujoco.mj_step(self.model, self.data) # type: ignore  
+  
+    def xml_add_obj(self, xml, obj_name, init_obj_pose):
+        parser = XMLParser(remove_blank_text=True)
+        tree = parse(BytesIO(xml), parser=parser)
+        worldroot = tree.getroot().find("worldbody")
+        obj_node = Element("body", {"name": obj_name, "pos": f"{init_obj_pose[0]} {init_obj_pose[1]} {init_obj_pose[2]}"})
+        SubElement(
+            obj_node,
+            "joint",
+            {"limited": "false", "name": obj_name, "type": "free"},
+        )
+        SubElement(
+            obj_node,
+            "geom",
+            {
+                "type": "mesh",
+                "mesh": obj_name,
+                "contype": "1",
+                "conaffinity": "1",
+                "friction": "0.8 0.01 0.8",
+                "density": "25",
+                "rgba": "1. 1. 1. 1",
+            },
+        )
+        worldroot.append(obj_node)
+        asset = tree.getroot().find("asset")
+        asset.append(
+            Element(
+                "mesh",
+                {
+                    "file": f"../objects/objects/{obj_name}/{obj_name}.stl",
+                },
+            )
+        )
+        return etree.tostring(tree)
 
     def _reset(self):
-        self.data.qpos[:3] = np.array(self.cfg.robot.init_state.pos)
-        self.data.qpos[3:7] = np.array(self.cfg.robot.init_state.rot)[[3,0,1,2]] # XYZW to WXYZ
-        self.data.qpos[7:] = self.dof_init_pose
-        self.data.qvel[:]   = 0
-        self.cmd = np.array(self.cfg.deploy.defcmd)
-        
-        #     self.data.qpos[7:]=np.array([-2.5090545e-01, -2.5106151e-02,  7.1244887e-03,  1.6603637e-01,
-        #    -6.8755798e-02,  1.0320849e-02, -1.4015448e-01,  4.8405614e-02,
-        #     2.2203762e-02,  1.5147208e-01, -1.6629830e-01, -5.5523389e-03,
-        #     5.0889206e-04,  1.8234365e-03,  1.1872462e-02,  1.8569557e-01,
-        #     1.7495771e-01, -4.6858322e-03,  9.0659463e-01,  1.8918298e-01,
-        #    -1.7903234e-01,  1.5699334e-02,  9.0766126e-01], dtype=np.float32)
-        
-        
-        #     self.data.qpos[7:] = np.array([-5.0120752e-02,  2.0163324e-02, -7.5798128e-03,  3.4919369e-01,
-        #    -2.8446102e-01, -2.5288673e-02, -4.7107577e-02,  1.8228805e-02,
-        #    -8.1556644e-03,  3.6581179e-01, -3.1244135e-01, -1.0373312e-02,
-        #     3.3479740e-04, -2.2920404e-04, -1.2685804e-02,  2.0712337e-01,
-        #     1.8589930e-01, -3.1398670e-03,  9.0953082e-01,  2.0744693e-01,
-        #    -1.8387397e-01,  2.2290659e-03,  9.0941095e-01], dtype=np.float32)
-        
-    #     self.data.qpos[3:7] = np.array([ 0.6405637 , -0.00132383, -0.00757721, -0.7678665 ], dtype=np.float32)
-    #     
-    #     self.data.qpos[7:]=np.array([-5.96156046e-02, -2.54555605e-02,  9.49485414e-03,  3.70618284e-01,
-    #     -2.84024119e-01,  1.78716499e-02, -4.85672913e-02, -1.99843608e-02,
-    #     1.40748825e-02,  3.53395075e-01, -2.75969267e-01,  1.50737213e-02,
-    #    -6.69594810e-05, -2.60704872e-03, -9.67030507e-03,  2.06643999e-01,
-    #     1.82651579e-01, -1.89350755e-03,  9.21970427e-01,  2.05757156e-01,
-    #    -1.83993816e-01,  9.43158567e-03,  9.09806430e-01], dtype=np.float32)
-    
-    #     self.data.qpos[3:7] = np.array([ 0.9177167 ,  0.06428247,  0.09726571, -0.3797411 ], dtype=np.float32)
-    #     self.data.qpos[7:] = np.array([-2.5090545e-01, -2.5106151e-02,  7.1244887e-03,  1.6603637e-01,
-    #    -6.8755798e-02,  1.0320849e-02, -1.4015448e-01,  4.8405614e-02,
-    #     2.2203762e-02,  1.5147208e-01, -1.6629830e-01, -5.5523389e-03,
-    #     5.0889206e-04,  1.8234365e-03,  1.1872462e-02,  1.8569557e-01,
-    #     1.7495771e-01, -4.6858322e-03,  9.0659463e-01,  1.8918298e-01,
-    #    -1.7903234e-01,  1.5699334e-02,  9.0766126e-01], dtype=np.float32)
-        # breakpoint()
-    #     self.data.qpos[3:] = np.array([9.9985272e-01,
-    #     1.3556309e-02,  5.9258053e-03,  8.6955857e-03, -7.0489824e-02,
-    #     1.3976265e-03,  4.9416097e-03,  3.5255992e-01, -2.6924220e-01,
-    #    -1.6139226e-02, -3.3434451e-02, -5.3774547e-03,  8.0485297e-03,
-    #     3.6053661e-01, -3.1571677e-01, -2.2485009e-03, -5.4906774e-04,
-    #    -6.4945215e-04, -1.3742541e-02,  2.0349215e-01,  1.8248379e-01,
-    #    -3.2597093e-03,  9.1346163e-01,  2.0483437e-01, -1.8628280e-01,
-    #     3.4274885e-03,  9.2512226e-01], dtype=np.float32)
-        
+        motion_times = torch.tensor((self.timer) * self.dt) # next frames so +1 
+        motion_res = self._motion_lib.get_motion_state([0], motion_times, offset=None)
+        root_pos = motion_res['root_pos'][0]
+        root_rot = motion_res['root_rot'][0]
+        root_vel = motion_res['root_vel'][0]
+        root_ang_vel = motion_res['root_ang_vel'][0]
 
+        dof_pos = motion_res['dof_pos'][0]
+        dof_vel = motion_res['dof_vel'][0]
+        # init robot
+        self.data.qpos[:3] = root_pos
+        self.data.qpos[3:7] = xyzw_to_wxyz(root_rot)
+        self.data.qpos[7:7 + self.num_actions] = dof_pos  
+        self.data.qvel[6:6 + self.num_actions] = dof_vel
+        self.data.qvel[0:3] = root_vel 
+        self.data.qvel[3:6] = root_ang_vel
+        self.cmd = np.array(self.cfg.deploy.defcmd)
+
+        if self.HOI_interaction:
+            ref_o_ang_vel = motion_res['o_ang_vel'][0]
+            ref_o_lin_vel = motion_res['o_lin_vel'][0]
+            ref_o_rb_rot = motion_res['o_rb_rot'][0]
+            ref_o_rb_pos = motion_res['o_rb_pos'][0]
+            self.data.qpos[7+ self.num_actions : 7+ self.num_actions +3] = ref_o_rb_pos
+            self.data.qpos[7+ self.num_actions + 3: 7+ self.num_actions +7] = xyzw_to_wxyz(ref_o_rb_rot) # TODO: simulator type protect
+            self.data.qvel[6 + self.num_actions:6 + self.num_actions + 3] = ref_o_lin_vel
+            self.data.qvel[6 + self.num_actions + 3:6 + self.num_actions + 6] = ref_o_ang_vel
+        print(self.data.qpos[:3], self.data.qpos[7+ self.num_actions : 7+ self.num_actions +3])
     @staticmethod
     def pd_control(target_q, q, kp, target_dq, dq, kd):
         '''Calculates torques from position commands
@@ -328,12 +369,24 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         '''Extracts physical states from the mujoco data structure
         '''
         data = self.data
-        self.q = data.qpos.astype(np.double)[7:] # 19 dim
-            # WXYZ
-            # 3 dim base pos + 4 dim quat + 12 dim actuation angles
-        self.dq = data.qvel.astype(np.double)[6:] # 18 dim ?????
+        self.q = data.qpos.astype(np.double)[7:7+ self.num_actions] # 19 dim # 43dim
+        self.dq = data.qvel.astype(np.double)[6:6+ self.num_actions] # 18 dim # 43dim
+
+        if self.HOI_interaction:
+            self._obs_global_obj_pos = data.qpos.astype(np.double)[7+ self.num_actions : 7+ self.num_actions +3]
+            self._obs_global_obj_vel = data.qvel.astype(np.double)[6+ self.num_actions : 6+ self.num_actions +3]
+            self.global_obj_rot = data.qpos.astype(np.double)[7+ self.num_actions + 3: 7+ self.num_actions +7][[1,2,3,0]] # WXYZ to XYZW
+        motion_times = torch.tensor((self.timer) * self.dt) # next frames so +1
+        motion_res = self._motion_lib.get_motion_state([0], motion_times)
+
+        # ref_obj_pos = motion_res["o_rb_pos"][0] # TODO: add table pos
+        # ref_obj_rot = motion_res["o_rb_rot"][0]
+        # ref_obj_lin = motion_res["o_lin_vel"][0]
+        # if "use motion obj obs":
+        #     self._obs_global_obj_pos = ref_obj_pos.to(torch.float64)
+        #     self.global_obj_rot = ref_obj_rot.to(torch.float64)
+        #     self._obs_global_obj_vel = ref_obj_lin.to(torch.float64)
             # 3 dim base vel + 3 dim omega + 12 dim actuation vel
-        
         self.pos = data.qpos.astype(np.double)[:3]
         self.quat = data.qpos.astype(np.double)[3:7][[1,2,3,0]] # WXYZ to XYZW
         self.vel = data.qvel.astype(np.double)[:3]
@@ -343,16 +396,20 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         self.rpy = quaternion_to_euler_array(self.quat) # need xyzw
         self.rpy[self.rpy > math.pi] -= 2 * math.pi
         self.gvec = r.apply(np.array([0., 0., -1.]), inverse=True).astype(np.double)
-    
         
         if self.heading_cmd:
             self.cmd[2] = np.clip(0.5*wrap_to_pi_float(self.cmd[3] - self.rpy[2]), -1., 1.)
             
+        # if self.is_motion_tracking:
+        #     self.motion_time = (self.timer) * self.dt 
+        #     self.ref_motion_phase = self.motion_time / self.motion_len
+
         if self.is_motion_tracking:
-            self.motion_time = (self.timer) * self.dt 
-            self.ref_motion_phase = self.motion_time / self.motion_len
-            
-        # breakpoint()
+            self.motion_time = (self.timer) * self.dt
+            self.ref_motion_phase = self.motion_time / self.motion_duration
+            # self.ref_motion_phase = (motion_times / self.motion_length) #(Env,)
+            # self.motions_phase[np.arange(self.num_envs), self.motion_indices] = self.ref_motion_phase + 1 # +1 for larger value, (Env, num_motions)
+            self.motions_phase = [self.ref_motion_phase + 1, 0.,0.,0.] # +1 for larger value, (Env, num_motions)
     
     def _sanity_check(self, target_q):
         unsafe_dof = np.where((np.abs(target_q - self.q) > 2.2 ) | 
@@ -368,46 +425,42 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         
         
     def _apply_action(self, target_q):
-        
+
         self._sanity_check(target_q)
         
-        rand_mask = np.random.random(self.num_actions) < self.mask_ratio
+        ##### TODO! #####
+        # rand_mask = np.random.random(self.num_actions) < self.mask_ratio
 
-        rand_delay = np.random.randint((1e-3*self.delay_ratio[0])//self.sim_dt, (1e-3*self.delay_ratio[1])//self.sim_dt) * self.RAND_DELAY
-        step_delay = rand_delay//self.decimation
-        substep_delay = rand_delay - step_delay * self.decimation
+        # rand_delay = np.random.randint((1e-3*self.delay_ratio[0])//self.sim_dt, (1e-3*self.delay_ratio[1])//self.sim_dt) * self.RAND_DELAY
+        # step_delay = rand_delay//self.decimation
+        # substep_delay = rand_delay - step_delay * self.decimation
         
-        if step_delay ==0:
-            old_action = self.history_handler.history['actions'][0, step_delay]
-            old_trg_q = np.clip(old_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
-            cur_trg_q = target_q
-        else:
-            old_action = self.history_handler.history['actions'][0, step_delay]
-            cur_action = self.history_handler.history['actions'][0, step_delay+1]
-            old_trg_q = np.clip(old_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
-            cur_trg_q = np.clip(cur_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
-                
+        # if step_delay ==0:
+        #     old_action = self.history_handler.history['actions'][0, step_delay]
+        #     old_trg_q = np.clip(old_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
+        #     cur_trg_q = target_q
+        # else:
+        #     old_action = self.history_handler.history['actions'][0, step_delay]
+        #     cur_action = self.history_handler.history['actions'][0, step_delay+1]
+        #     old_trg_q = np.clip(old_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
+        #     cur_trg_q = np.clip(cur_action, -self.clip_action_limit, self.clip_action_limit) * self.action_scale + self.dof_init_pose
+        ######        
+        print(self.ref_motion_phase)
         for i in range(self.decimation):
-            self.GetState()
-            
-            if self.RAND_DELAY and i < substep_delay:
-                target_q = old_trg_q
-            elif self.RAND_MASK:
-                target_q = cur_trg_q * rand_mask + old_trg_q.numpy() * (1 - rand_mask)
-            else:
-                target_q = cur_trg_q
+            q = self.data.qpos[7:7+ self.num_actions]   
+            dq = self.data.qvel[6:6+ self.num_actions]
+            #### TODO ####
+            # if self.RAND_DELAY and i < substep_delay:
+            #     target_q = old_trg_q
+            # elif self.RAND_MASK:
+            #     target_q = cur_trg_q * rand_mask + old_trg_q.numpy() * (1 - rand_mask)
+            # else:
+            #     target_q = cur_trg_q
                 
-            tau = self.pd_control(target_q, self.q, self.kp,
-                            0, self.dq, self.kd)  # Calc torques
-            
+            tau = self.pd_control(target_q, q, self.kp, 0, dq, self.kd)  # Calc torques
             if self.RAND_NOISE: tau = MujocoRobot.mk_rand_noise(tau, MujocoRobot.noise_ratio)
             tau = np.clip(tau, -self.tau_limit, self.tau_limit)  # Clamp torques
             
-            
-            # MujocoRobot.print_torque(tau)
-            # tau*=0
-            # print(np.linalg.norm(target_q-self.q), np.linalg.norm(self.dq), np.linalg.norm(tau))
-            # self.data.qpos[:3] = np.array([0,0,1])
             self.data.ctrl[:] = tau
             if self.HANG:
                 # self.data.ctrl[14] = 0.5
@@ -415,7 +468,7 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
 
             mujoco.mj_step(self.model, self.data) # type: ignore
             
-            self.tracking()
+            #self.tracking()
             self.render_step()
             # self._subtimer += 1
         
@@ -430,9 +483,7 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         # breakpoint()
 
     def Obs(self):
-        
-        # return {k: torch2np(v) for k, v in self.obs_buf_dict.items()}
-        
+        #print(torch2np(self.obs_buf_dict['actor_obs']).reshape(1, -1))
         actor_obs = torch2np(self.obs_buf_dict['actor_obs']).reshape(1, -1)
         if self.RAND_NOISE:
             actor_obs = MujocoRobot.mk_rand_noise(actor_obs, MujocoRobot.noise_ratio)
@@ -514,9 +565,9 @@ class MujocoRobot(URCIRobot, ViewerPlugin):
         # breakpoint()
         # print(np.linalg.norm(self.data.xpos[6]-self.data.xpos[12]))
         if np.any(self.data.contact.pos[:,2] > 0.01):
-            names_list = self.model.names.decode('utf-8').split('\x00')[:40]
+            names_list = self.model.names.decode('utf-8').split('\x00')[:] #:40
             res = np.zeros((6,1),dtype=np.float64)
-            geom_name = lambda x: (names_list[self.model.geom_bodyid[x] + 1])
+            geom_name = lambda x: (names_list[self.model.geom_bodyid[x]+1]) # 
             geom_force = lambda x:mujoco.mj_contactForce(self.model,self.data,x,res) #type:ignore
             
             for contact in self.data.contact:

@@ -38,8 +38,8 @@ import torch
 import joblib
 # add argparse arguments
 from loguru import logger
-JIT_Policy = True
-ONNX_Policy = False
+JIT_Policy = False
+ONNX_Policy = True
 class MujocoDeployer():
     def __init__(self, config):
         checkpoint_path = config.checkpoint
@@ -59,14 +59,15 @@ class MujocoDeployer():
             with open(self.xml_path, "rb") as f:
                 robot_xml_data = f.read()
             data_seq = joblib.load(config.robot.motion.motion_file)
-            self.obj_name = list(data_seq.keys())
-            self._motion_lib = MotionLibHoi(config.robot.motion, num_envs=1, device=self.device)
+            self.obj_name = list(["largebox"])#list(data_seq.keys())
+            self.TASK_ID = 0
+            self._motion_lib = MotionLibHoi(config.robot.motion, num_envs=self.TASK_ID+1, device=self.device)
             self._motion_lib.load_motions(random_sample=False)
-            self.motion_length = self._motion_lib.get_motion_length()
+            self.motion_length = self._motion_lib.get_motion_length()[self.TASK_ID]
             self.motion_start_times = 0
-            motion_res = self._motion_lib.get_motion_state(0, torch.tensor(0))
-            init_obj_pose = motion_res['o_rb_pos']
-            new_string = self.xml_add_obj(robot_xml_data,self.obj_name[0], init_obj_pose)
+            motion_res = self._motion_lib.get_motion_state([self.TASK_ID], torch.tensor(0))
+            init_obj_pose = motion_res['o_rb_pos'][0]
+            new_string = self.xml_add_obj(robot_xml_data,self.obj_name[self.TASK_ID], init_obj_pose)
             xml_with_object = f"humanoidverse/data/robots/g1/g1_29dof_with_hand_obj.xml"
             open(xml_with_object, "wb").write(new_string)
             self.mjmodel = mujoco.MjModel.from_xml_path(xml_with_object)
@@ -112,7 +113,7 @@ class MujocoDeployer():
         self.rl_action_indices = [i for i in range(self.num_actions) if i not in self.open_dof_indices]
         self.rl_action_nums = len(self.rl_action_indices)
         self.motions_phase = torch.zeros(self.num_envs, len(self.obj_name), dtype=torch.float, device=self.device, requires_grad=False)
-        self.motion_indices = torch.arange(self.num_envs) % 4
+        self.motion_indices = self.TASK_ID % len(self.obj_name)
 
         self.reset(self.load_obj_flag)
         if ONNX_Policy:
@@ -120,7 +121,8 @@ class MujocoDeployer():
             self.action = np.squeeze(self.ort_session.run(None, {self.input_name: obs_tensor})[0])
         if JIT_Policy:
             obs_tensor = self.obs_buf_dict["actor_obs"].unsqueeze(0).float()
-            self.action = self.policy(obs_tensor)[0].detach().numpy()
+            obs_tensor = torch.cat((obs_tensor,obs_tensor),dim=0)
+            self.action = self.policy(obs_tensor)[self.TASK_ID].detach().numpy()
         pass
     
     def load_pd_param(self, m, config):
@@ -185,8 +187,8 @@ class MujocoDeployer():
                 "mesh": obj_name,
                 "contype": "1",
                 "conaffinity": "1",
-                "friction": "0.9 0.01 0.0001",
-                "mass": "0.5",
+                "friction": "0.5 0.01 0.5",
+                "density": "20",
                 # "stiffness": "30000",
                 # "damping": "1000",
                 "rgba": "1. 1. 1. 1",
@@ -208,8 +210,9 @@ class MujocoDeployer():
     
     def reset(self, with_object=False):
         env_ids = 0
+        Random_xy = torch.tensor([0.1,0.1, 0.])
         motion_times = torch.tensor((self.episode_length_buf) * self.dt + self.motion_start_times) # next frames so +1
-        motion_res = self._motion_lib.get_motion_state([0], motion_times)
+        motion_res = self._motion_lib.get_motion_state([self.TASK_ID], motion_times)
         
         root_pos_noise = self.config.env.config.init_noise_scale.root_pos * self.config.env.config.noise_to_initial_level
         root_rot_noise = self.config.env.config.init_noise_scale.root_rot * 3.14 / 180 * self.config.env.config.noise_to_initial_level
@@ -231,13 +234,12 @@ class MujocoDeployer():
         self.mjdata.qvel[6:6 + len(self.target_dof_pos)] = dof_vel # 设置关节速度为 0
         self.mjdata.qvel[0:3] = root_vel + torch.randn_like(root_vel) * root_vel_noise
         self.mjdata.qvel[3:6] = root_ang_vel + torch.randn_like(root_ang_vel) * root_ang_vel_noise
-
         if with_object:
             ref_o_ang_vel = motion_res['o_ang_vel'][env_ids]
             ref_o_lin_vel = motion_res['o_lin_vel'][env_ids]
             ref_o_rb_rot = motion_res['o_rb_rot'][env_ids]
             ref_o_rb_pos = motion_res['o_rb_pos'][env_ids]
-            self.mjdata.qpos[7+ self.num_actions : 7+ self.num_actions +3] = ref_o_rb_pos + root_pos_randn
+            self.mjdata.qpos[7+ self.num_actions : 7+ self.num_actions +3] = ref_o_rb_pos + Random_xy
             self.mjdata.qpos[7+ self.num_actions + 3: 7+ self.num_actions +7] = xyzw_to_wxyz(ref_o_rb_rot) # TODO: simulator type protect
             self.mjdata.qvel[6 + len(self.target_dof_pos):6 + len(self.target_dof_pos) + 3] = ref_o_lin_vel
             self.mjdata.qvel[6 + len(self.target_dof_pos) + 3:6 + len(self.target_dof_pos) + 6] = ref_o_ang_vel
@@ -278,7 +280,8 @@ class MujocoDeployer():
                 self.action = np.squeeze(self.ort_session.run(None, {self.input_name: obs_tensor})[0])
             if JIT_Policy:
                 obs_tensor = self.obs_buf_dict["actor_obs"].unsqueeze(0).float()
-                self.action = self.policy(obs_tensor)[0].detach().numpy()
+                obs_tensor = torch.cat((obs_tensor,obs_tensor),dim=0)
+                self.action = self.policy(obs_tensor)[self.TASK_ID].detach().numpy()
             self.action = np.clip(self.action, -self.clip_action_limit, self.clip_action_limit)
             actions_scaled = self.action * self.config.robot.control.action_scale
             self.step(actions_scaled)
@@ -328,29 +331,48 @@ class MujocoDeployer():
             ref_obj_rot = motion_res["o_rb_rot"]
             ref_obj_lin = motion_res["o_lin_vel"]
             ref_obj_ang = motion_res["o_ang_vel"]
+            if "use motion obj obs":
+                self.global_obj_pos = ref_obj_pos.to(torch.float64)
+                self.global_obj_rot = ref_obj_rot.to(torch.float64)
+                self._obs_global_obj_vel = ref_obj_lin.to(torch.float64)
+            else:
+                #self.global_obj_pos = ref_obj_pos.unsqueeze(0).to(torch.float64)
+                self.global_obj_pos = torch.from_numpy(self.mjdata.qpos[7+ self.num_actions : 7+ self.num_actions +3]).unsqueeze(0)
+                self.global_obj_rot = wxyz_to_xyzw(torch.from_numpy(self.mjdata.qpos[7+ self.num_actions + 3: 7+ self.num_actions +7])).unsqueeze(0)
+                self._obs_global_obj_vel = torch.from_numpy(self.mjdata.qvel[6 + len(self.target_dof_pos):6 + len(self.target_dof_pos) + 3]).unsqueeze(0)
 
-            global_obj_pos = torch.from_numpy(self.mjdata.qpos[7+ self.num_actions : 7+ self.num_actions +3]).unsqueeze(0)
-            self.global_obj_rot = wxyz_to_xyzw(torch.from_numpy(self.mjdata.qpos[7+ self.num_actions + 3: 7+ self.num_actions +7])).unsqueeze(0)
-            global_obj_lin = torch.from_numpy(self.mjdata.qvel[6 + len(self.target_dof_pos):6 + len(self.target_dof_pos) + 3]).unsqueeze(0)
             global_obj_ang = torch.from_numpy(self.mjdata.qvel[6 + len(self.target_dof_pos) + 3:6 + len(self.target_dof_pos) + 6]).unsqueeze(0)
             #print("Current Obj Pos: ", global_obj_pos, self.mjdata.qpos[7+ self.num_actions + 3: 7+ self.num_actions +7], "Current Human Pos: ", root_pos, self.mjdata.qpos[3:7] )
 
             ## diff compute - kinematic object
-            local_obj_root_pos = global_obj_pos.view(env_batch_size, -1, 3) - root_pos.view(env_batch_size, 1, 3)
+            local_obj_root_pos = self.global_obj_pos.view(env_batch_size, -1, 3) - root_pos.view(env_batch_size, 1, 3)
             local_obj_pos_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_obj_root_pos.view(-1, 3))
             self._obs_local_obj_pos = local_obj_pos_flat.view(env_batch_size, -1) # (num_envs, 3)
 
-            local_obj_root_vel = global_obj_lin.view(env_batch_size, -1, 3)
+            local_obj_root_vel = self._obs_global_obj_vel.view(env_batch_size, -1, 3)
             local_obj_root_vel_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), local_obj_root_vel.view(-1, 3))
             self._obs_local_obj_vel = local_obj_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
 
+
+            ## open obs
+            # ref_robot_root_pos = motion_res['root_pos']
+            # ref_robot_root_rot = motion_res['root_rot'][0]
+            # heading_inv_rot = calc_heading_quat_inv(ref_robot_root_rot.clone().unsqueeze(0).to(torch.float64), w_last=True)
+            # local_obj_root_pos = ref_obj_pos.view(env_batch_size, -1, 3) - ref_robot_root_pos.view(env_batch_size, 1, 3)
+            # local_obj_pos_flat = my_quat_rotate(heading_inv_rot.view(-1, 4).to(torch.float64), local_obj_root_pos.view(-1, 3).to(torch.float64))
+            # self._obs_local_obj_pos = local_obj_pos_flat.view(env_batch_size, -1) # (num_envs, 3)
+
+            # local_obj_root_vel = ref_obj_lin.view(env_batch_size, -1, 3)
+            # local_obj_root_vel_flat = my_quat_rotate(heading_inv_rot.view(-1, 4).to(torch.float64), local_obj_root_vel.view(-1, 3).to(torch.float64))
+            # self._obs_local_obj_vel = local_obj_root_vel_flat.view(env_batch_size, -1) # (num_envs, 3)
+
             # yhlin
-            self.dif_object_position = ref_obj_pos - global_obj_pos
+            self.dif_object_position = ref_obj_pos - self.global_obj_pos
             self.dif_object_rotation = quat_mul(ref_obj_rot, quat_conjugate(self.global_obj_rot, w_last=True), w_last=True)
-            self.dif_object_lin_vel = ref_obj_lin - global_obj_lin
+            self.dif_object_lin_vel = ref_obj_lin - self._obs_global_obj_vel
             self.dif_object_ang_vel = ref_obj_ang - global_obj_ang
             
-            dif_global_obj_pos_for_obs_compute = ref_obj_pos.view(env_batch_size, -1, 3) - global_obj_pos.view(env_batch_size, -1, 3)
+            dif_global_obj_pos_for_obs_compute = ref_obj_pos.view(env_batch_size, -1, 3) - self.global_obj_pos.view(env_batch_size, -1, 3)
             dif_local_obj_pos_flat = my_quat_rotate(heading_inv_rot.view(-1, 4), dif_global_obj_pos_for_obs_compute.view(-1, 3))
             self._obs_dif_local_obj_pos = dif_local_obj_pos_flat.view(env_batch_size, -1) # (num_envs, num_rigid_bodies*3)
             
@@ -376,7 +398,7 @@ class MujocoDeployer():
     def step(self, actions_scaled):
         if self.config.robot.hybrid_control_mode:
             motion_times = torch.tensor((self.episode_length_buf + 1) * self.dt + self.motion_start_times) # next frames so +1 
-            motion_res = self._motion_lib.get_motion_state([0], motion_times, offset=None)
+            motion_res = self._motion_lib.get_motion_state([self.TASK_ID], motion_times, offset=None)
 
             self.ref_joint_pos = motion_res["dof_pos"] #
             self.hybrid_action = np.zeros((self.num_envs, self.num_actions),dtype=np.float32)
@@ -429,17 +451,32 @@ class MujocoDeployer():
     def _get_obs_projected_gravity(self,):
         return self.projected_gravity
     
-    def _get_obs_dof_pos(self,):
+    def _get_obs_full_dof_pos(self,):
         return self.dof_pos - self.default_dof_pos
     
-    def _get_obs_dof_vel(self,):
+    def _get_obs_full_dof_vel(self,):
         return self.dof_vel
+
+    def _get_obs_dof_pos(self,):
+        dof_pos = self.dof_pos - self.default_dof_pos
+        if self.config.robot.with_open_obs: return dof_pos
+        else: return dof_pos[self.ppo_action_indices]
+    
+    def _get_obs_dof_vel(self,):
+        if self.config.robot.with_open_obs: return self.simulator.dof_vel
+        else: return self.dof_vel[self.ppo_action_indices]
 
     def _get_obs_local_tar_pos(self,):
         return self._obs_local_obj_pos.squeeze()
 
+    def _get_obs_global_tar_pos(self,):
+        return self.global_obj_pos.squeeze()
+    
     def _get_obs_local_tar_vel(self,):
         return self._obs_local_obj_vel.squeeze()
+
+    def _get_obs_global_tar_vel(self,):
+        return self._obs_global_obj_vel.squeeze()
     
     def _get_obs_tar_rot(self,):
         return self.global_obj_rot.squeeze()
@@ -447,7 +484,7 @@ class MujocoDeployer():
     def _get_obs_ref_motion_phase(self):
         if self.config.obs.obs_dims.ref_motion_phase == 1:
             return self._ref_motion_phase
-        elif self.config.obs.obs_dims.ref_motion_phase == 4:
+        elif self.config.obs.obs_dims.ref_motion_phase != 1:
             return self.motions_phase.squeeze()
     
     def _get_obs_actions(self):

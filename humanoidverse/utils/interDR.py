@@ -295,13 +295,13 @@ class G1_29_ArmIK:
         ik_succeed_id = []
 
         for env in range(ik_nums): 
-            L_tf_target = pin.SE3(pin.Quaternion(1,0,0,0),new_left_pos[env],)
-            R_tf_target = pin.SE3(pin.Quaternion(1,0,0,0),new_right_pos[env],)
+            L_tf_target = pin.SE3(pin.Quaternion(1,0,0,0.0),new_left_pos[env],) #0.05
+            R_tf_target = pin.SE3(pin.Quaternion(1,0,0,0.),new_right_pos[env],) #-0.2
             step = 0
             while True:
-                sol_q, failed_flag = self.solve_ik(L_tf_target.homogeneous, R_tf_target.homogeneous, origin_q=origin_q[env])
+                sol_q, failed_flag = self.solve_ik(L_tf_target.homogeneous, R_tf_target.homogeneous, current_lr_arm_motor_q=origin_q[env] ,origin_q=origin_q[env])
                 step += 1
-                if step > 4 or failed_flag:
+                if step > 10 or failed_flag:
                     break
             if not failed_flag: ik_succeed_id.append(env)
             sol_q_all[env] = sol_q

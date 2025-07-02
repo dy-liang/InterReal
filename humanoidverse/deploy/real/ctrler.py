@@ -196,7 +196,7 @@ class LowLevelMagic:
     def send_cmd(self):
         self.sanity_check()
         self.low_cmd.crc = CRC().Crc(self.low_cmd)
-        self.lowcmd_publisher_.Write(self.low_cmd)
+        #self.lowcmd_publisher_.Write(self.low_cmd)
 
     def LowStateCallback(self):
         
@@ -277,7 +277,6 @@ class RealRobot(URCIRobot, LowLevelMagic):
             self.kp_real[j] = kp[i]
             self.kd_real[j] = kd[i]
             self.dof_init_pose_real[j] = dof_init_pose[i]
-        print(self.dof_init_pose_real)
         # 填充锁定关节的kp/kd
         for j in self.dof_idx_locked:
             self.kp_real[j] = self.locked_kp
@@ -561,7 +560,6 @@ class RealRobot(URCIRobot, LowLevelMagic):
         for i in range(num_step + 1):
             alpha = i / num_step
             for j in range(self.num_real_dofs):
-                print(j,end_dof_pos[j],self.kp_real[j])
                 self.low_cmd.motor_cmd[j].q = start_dof_pos[j] * (1 - alpha) + end_dof_pos[j] * alpha
                 self.low_cmd.motor_cmd[j].qd = 0
                 self.low_cmd.motor_cmd[j].kp = self.kp_real[j]  # Use pre-calculated values
