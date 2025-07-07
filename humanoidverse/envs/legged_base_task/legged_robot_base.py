@@ -205,8 +205,11 @@ class LeggedRobotBase(BaseTask):
 
         # if self.episode_length_buf[0] == 1:
         #     import ipdb; ipdb.set_trace()
+        featset = {}
+        featset["hist_act_seq"] = self.motion_act_seq
+        featset["gt_act"] = self.gt_act
 
-        return self.obs_buf_dict, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf_dict, self.rew_buf, self.reset_buf, self.extras, featset
 
     def _pre_physics_step(self, actions):
         clip_action_limit = self.config.robot.control.action_clip_value

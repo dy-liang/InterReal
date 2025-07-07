@@ -93,6 +93,9 @@ class BaseTask():
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.motion_act_seq = torch.zeros((self.num_envs, self.config.obs.obs_auxiliary.history_actor.dof_pos, self.ppo_dim_actions), device=self.device, dtype=torch.float, requires_grad=False)
+        self.gt_act = torch.zeros((self.num_envs, self.ppo_dim_actions), device=self.device, dtype=torch.float, requires_grad=False)
+
         self.extras = {}
         self.log_dict = {}
 
@@ -110,8 +113,9 @@ class BaseTask():
         actions = torch.zeros(self.num_envs, self.ppo_dim_actions, device=self.device, requires_grad=False)
         actor_state = {}
         actor_state["actions"] = actions
-        obs_dict, _, _, _ = self.step(actor_state)
-        return obs_dict
+        obs_dict, _, _, _, featset = self.step(actor_state)
+
+        return obs_dict, featset
     
     # def _refresh_env_idx_tensors(self, env_ids):
     #     env_ids_int32 = env_ids.to(dtype=torch.int32)

@@ -31,7 +31,10 @@ class BaseModule(nn.Module):
     def _calculate_output_dim(self):
         output_dim = 0
         for each_output in self.module_config_dict['output_dim']:
-            if isinstance(each_output, (int, float)):
+            if each_output in self.obs_dim_dict:
+                # atomic observation type
+                output_dim += self.obs_dim_dict[each_output]
+            elif isinstance(each_output, (int, float)):
                 output_dim += each_output
             else:
                 current_function_name = inspect.currentframe().f_code.co_name

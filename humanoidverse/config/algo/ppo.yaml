@@ -20,7 +20,7 @@ algo:
 
     num_steps_per_env: 24
     save_interval: 100
-    save_jit_model: True
+    save_jit_model: False
     save_model: True
     load_optimizer: True
 
@@ -31,6 +31,22 @@ algo:
     eval_callbacks: null
 
     module_dict:
+      use_enc: False
+      encoder: 
+        latent_state: 128
+        input_dim: [actor_obs]
+        output_dim: [latent_state]
+        layer_config:
+          type: MLP
+          hidden_dims: [512, 256]
+          activation: ELU
+      enc_actor: 
+        input_dim: [latent_state]
+        output_dim: [robot_action_dim]
+        layer_config:
+          type: MLP
+          hidden_dims: [512, 256]
+          activation: ELU
       actor: 
         input_dim: [actor_obs]
         output_dim: [robot_action_dim]

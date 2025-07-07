@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-
+import torch.nn.functional as F
 from .modules import BaseModule
 
 class PPOActor(nn.Module):
@@ -14,11 +14,18 @@ class PPOActor(nn.Module):
                 num_actions,
                 init_noise_std):
         super(PPOActor, self).__init__()
+        self.module_config_dict = module_config_dict
+        if "use_enc" in module_config_dict and module_config_dict.use_enc:
+            latent_state = module_config_dict.encoder.latent_state
+            obs_dim_dict["latent_state"]=latent_state
 
-        module_config_dict = self._process_module_config(module_config_dict, num_actions)
+            module_config_dict_enc = self._process_module_config(module_config_dict.encoder, latent_state)  
+            module_config_dict_actor = self._process_module_config(module_config_dict.enc_actor, num_actions)
+            self.enc_module = BaseModule(obs_dim_dict, module_config_dict_enc)
+        else:
+            module_config_dict_actor = self._process_module_config(module_config_dict.actor, num_actions)
 
-        self.actor_module = BaseModule(obs_dim_dict, module_config_dict)
-
+        self.act_module = BaseModule(obs_dim_dict, module_config_dict_actor)
         # Action noise
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
@@ -30,6 +37,13 @@ class PPOActor(nn.Module):
             if output_dim == 'robot_action_dim':
                 module_config_dict['output_dim'][idx] = num_actions
         return module_config_dict
+
+    def actor_module(self, actor_obs):
+        if "use_enc" in self.module_config_dict and self.module_config_dict.use_enc:
+            enc = self.enc_module(actor_obs)
+            out = self.act_module(F.relu(enc))
+            return out
+        else: return self.act_module(actor_obs)
 
     @property
     def actor(self):

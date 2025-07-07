@@ -190,7 +190,6 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
                                                          self.config.termination_curriculum.terminate_when_motion_far_threshold_min, 
                                                          self.config.termination_curriculum.terminate_when_motion_far_threshold_max)
         
-
     def _update_tasks_callback(self):
         super()._update_tasks_callback()
         if self.config.resample_motion_when_training:
@@ -277,6 +276,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_tar_contact = motion_res["obj_contact"]
         self.ref_ig = motion_res["ig"]
 
+        a1 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 1*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        a2 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 2*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        a3 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 3*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        a4 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 4*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        #print(ref_joint_pos[:,self.ppo_action_indices].unsqueeze(1), a1,a2,a3)
+        self.motion_act_seq = torch.cat((a1,a2,a3,a4),dim=1)
+        self.gt_act = ref_joint_pos[:,self.ppo_action_indices]*4.0
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
             self.simulator._rigid_body_rot[:, self.extend_body_parent_ids].reshape(-1, 4),
@@ -797,7 +803,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._update_adaptive_sigma(diff_body_ang_vel_dist, 'teleop_body_ang_vel')
         return r_body_ang_vel
 
-    def _reward_teleop_joint_position(self):
+    def _reward_teleop_joint_position(self): #TODO, fix the ppo_action_indices
         joint_pos_diff = self.dif_joint_angles
         diff_joint_pos_dist = (joint_pos_diff**2).mean(dim=-1)
         r_joint_pos = torch.exp(-diff_joint_pos_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_pos)

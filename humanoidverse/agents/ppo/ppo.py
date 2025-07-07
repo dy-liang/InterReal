@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import copy
 from humanoidverse.agents.modules.ppo_modules import PPOActor, PPOCritic
+from humanoidverse.agents.modules.act_rep import Encoder
 from humanoidverse.agents.modules.data_utils import RolloutStorage
 from humanoidverse.envs.base_task.base_task import BaseTask
 from humanoidverse.agents.base_algo.base_algo import BaseAlgo
@@ -55,7 +56,7 @@ class PPO(BaseAlgo):
 
         self.eval_callbacks: list[RL_EvalCallback] = []
         self.episode_env_tensors = TensorAverageMeterDict()
-        _ = self.env.reset_all()
+        _, _ = self.env.reset_all()
 
     def _init_config(self):
         # Env related Config
@@ -104,16 +105,20 @@ class PPO(BaseAlgo):
     def _setup_models_and_optimizer(self):
         self.actor = PPOActor(
             obs_dim_dict=self.algo_obs_dim_dict,
-            module_config_dict=self.config.module_dict.actor,
+            module_config_dict=self.config.module_dict,
             num_actions=self.num_act,
             init_noise_std=self.config.init_noise_std
         ).to(self.device)
-
+        if "use_enc" in self.config.module_dict and self.config.module_dict.use_enc:
+            self.enc = Encoder(self.actor, self.num_act, self.num_envs, self.device).to(self.device)
+            self.encoder_optimizer = optim.Adam(self.enc.parameters(), lr=self.critic_learning_rate)
+            print("Use encoder for actor", self.enc)
         self.critic = PPOCritic(self.algo_obs_dim_dict,
                                 self.config.module_dict.critic).to(self.device)
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_learning_rate)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate)
+        self.bc_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_learning_rate)
 
     def _setup_storage(self):
         self.storage = RolloutStorage(self.env.num_envs, self.num_steps_per_env, self.device)
@@ -131,6 +136,8 @@ class PPO(BaseAlgo):
         self.storage.register_key('actions_log_prob', shape=(1,), dtype=torch.float)
         self.storage.register_key('action_mean', shape=(self.num_act,), dtype=torch.float)
         self.storage.register_key('action_sigma', shape=(self.num_act,), dtype=torch.float)
+        self.storage.register_key('gt_act', shape=(self.num_act,), dtype=torch.float)
+        self.storage.register_key('hist_act_seq', shape=(4, self.num_act), dtype=torch.float)
 
     def _eval_mode(self):
         self.actor.eval()
@@ -172,7 +179,7 @@ class PPO(BaseAlgo):
             }, path)
         if self.save_jit_model:
             logger.info(f'Saving jit policy to {path_jit}')
-            model = copy.deepcopy(self.actor.actor).to('cpu')
+            model = copy.deepcopy(self.actor.actor_module).to('cpu')
             traced_script_module = torch.jit.script(model)
             traced_script_module.save(path_jit)
         
@@ -180,7 +187,8 @@ class PPO(BaseAlgo):
         if self.init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         
-        obs_dict = self.env.reset_all()
+        obs_dict, _ = self.env.reset_all()
+
         for obs_key in obs_dict.keys():
             obs_dict[obs_key] = obs_dict[obs_key].to(self.device)
             
@@ -242,11 +250,11 @@ class PPO(BaseAlgo):
         return policy_state_dict
 
     def _rollout_step(self, obs_dict):
-        with torch.inference_mode():
-            for i in range(self.num_steps_per_env):
-                # Compute the actions and values
-                # actions = self.actor.act(obs_dict["actor_obs"]).detach()
-
+        for i in range(self.num_steps_per_env):
+            # Compute the actions and values
+            # actions = self.actor.act(obs_dict["actor_obs"]).detach()
+            #with torch.inference_mode():
+            with torch.no_grad():
                 policy_state_dict = {}
                 policy_state_dict = self._actor_rollout_step(obs_dict, policy_state_dict)
                 values = self._critic_eval_step(obs_dict).detach()
@@ -261,10 +269,16 @@ class PPO(BaseAlgo):
                 actions = policy_state_dict["actions"]
                 actor_state = {}
                 actor_state["actions"] = actions
-                obs_dict, rewards, dones, infos = self.env.step(actor_state)
+                obs_dict, rewards, dones, infos, featset = self.env.step(actor_state)
+                # {"gt_act" "hist_act_seq"}
                 # critic_obs = privileged_obs if privileged_obs is not None else obs
                 for obs_key in obs_dict.keys():
                     obs_dict[obs_key] = obs_dict[obs_key].to(self.device)
+
+                for obs_key in featset.keys():
+                    featset[obs_key] = featset[obs_key].to(self.device)
+                self.storage.update_key('gt_act', featset["gt_act"])
+                self.storage.update_key('hist_act_seq', featset["hist_act_seq"])
                 rewards, dones = rewards.to(self.device), dones.to(self.device)
 
                 self.episode_env_tensors.add(infos["to_log"])
@@ -289,21 +303,29 @@ class PPO(BaseAlgo):
                     self.lenbuffer.extend(self.cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
                     self.cur_reward_sum[new_ids] = 0
                     self.cur_episode_length[new_ids] = 0
-
-            self.stop_time = time.time()
-            self.collection_time = self.stop_time - self.start_time
-            self.start_time = self.stop_time
             
-            # prepare data for training
+            # training enc
+            # enc_s = self.enc.encoder(obs_dict["actor_obs"].clone())
+            # #r_seq = torch.zeros((self.num_envs, 4), requires_grad=False, device=self.device)
+            # enc_loss = self.enc.update_extr(featset["hist_act_seq"], enc_s, self.num_envs)
+            # self.encoder_optimizer.zero_grad()
+            # enc_loss.backward()
+            # self.encoder_optimizer.step()
 
-            returns, advantages = self._compute_returns(
-                last_obs_dict=obs_dict,
-                policy_state_dict=dict(values=self.storage.query_key('values'), 
-                dones=self.storage.query_key('dones'), 
-                rewards=self.storage.query_key('rewards'))
-            )
-            self.storage.batch_update_data('returns', returns)
-            self.storage.batch_update_data('advantages', advantages)
+        self.stop_time = time.time()
+        self.collection_time = self.stop_time - self.start_time
+        self.start_time = self.stop_time
+        
+        # prepare data for training
+
+        returns, advantages = self._compute_returns(
+            last_obs_dict=obs_dict,
+            policy_state_dict=dict(values=self.storage.query_key('values'), 
+            dones=self.storage.query_key('dones'), 
+            rewards=self.storage.query_key('rewards'))
+        )
+        self.storage.batch_update_data('returns', returns)
+        self.storage.batch_update_data('advantages', advantages)
 
         return obs_dict
 
@@ -381,6 +403,7 @@ class PPO(BaseAlgo):
         loss_dict['Value'] = 0
         loss_dict['Surrogate'] = 0
         loss_dict['Entropy'] = 0
+        loss_dict['BC'] = 0
         return loss_dict
     
     def _update_algo_step(self, policy_state_dict, loss_dict):
@@ -401,6 +424,7 @@ class PPO(BaseAlgo):
         old_actions_log_prob_batch = policy_state_dict['actions_log_prob']
         old_mu_batch = policy_state_dict['action_mean']
         old_sigma_batch = policy_state_dict['action_sigma']
+        gt_act_batch = policy_state_dict['gt_act']
 
         self._actor_act_step(policy_state_dict)
         actions_log_prob_batch = self.actor.get_actions_log_prob(actions_batch)
@@ -408,7 +432,6 @@ class PPO(BaseAlgo):
         mu_batch = self.actor.action_mean
         sigma_batch = self.actor.action_std
         entropy_batch = self.actor.entropy
-
         # KL
         if self.desired_kl != None and self.schedule == 'adaptive':
             with torch.inference_mode():
@@ -427,6 +450,7 @@ class PPO(BaseAlgo):
                     param_group['lr'] = self.actor_learning_rate
                 for param_group in self.critic_optimizer.param_groups:
                     param_group['lr'] = self.critic_learning_rate
+
 
         # Surrogate loss
         ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -450,11 +474,18 @@ class PPO(BaseAlgo):
         
         critic_loss = self.value_loss_coef * value_loss
 
+        # BC loss
+        #pre_act = self.actor.act(policy_state_dict["actor_obs"])
+        bc_loss = (mu_batch - gt_act_batch).pow(2).mean() * 0.3
+        #self.actor_optimizer.zero_grad()
+        #bc_loss.backward()
+        #self.actor_optimizer.step()
+
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
         
         # print("skip backward")
-        actor_loss.backward()
+        (actor_loss + bc_loss).backward()
         critic_loss.backward()
 
         # Gradient step
@@ -467,6 +498,7 @@ class PPO(BaseAlgo):
         loss_dict['Value'] += value_loss.item()
         loss_dict['Surrogate'] += surrogate_loss.item()
         loss_dict['Entropy'] += entropy_loss.item()
+        loss_dict['BC'] += bc_loss.item()
         return loss_dict
 
     def set_learning_rate(self, actor_learning_rate, critic_learning_rate):
@@ -574,7 +606,7 @@ class PPO(BaseAlgo):
     ##########################################################################################
 
     def env_step(self, actor_state):
-        obs_dict, rewards, dones, extras = self.env.step(actor_state)
+        obs_dict, rewards, dones, extras, _ = self.env.step(actor_state)
         actor_state.update(
             {"obs": obs_dict, "rewards": rewards, "dones": dones, "extras": extras}
         )
@@ -582,7 +614,7 @@ class PPO(BaseAlgo):
 
     @torch.no_grad()
     def get_example_obs(self):
-        obs_dict = self.env.reset_all()
+        obs_dict, _ = self.env.reset_all()
         for obs_key in obs_dict.keys():
             print(obs_key, sorted(self.env.config.obs.obs_dict[obs_key]))
         # move to cpu
@@ -597,7 +629,7 @@ class PPO(BaseAlgo):
         actor_state = self._create_actor_state()
         step = 0
         self.eval_policy = self._get_inference_policy()
-        obs_dict = self.env.reset_all()
+        obs_dict, _ = self.env.reset_all()
         init_actions = torch.zeros(self.env.num_envs, self.num_act, device=self.device)
         actor_state.update({"obs": obs_dict, "actions": init_actions})
         actor_state = self._pre_eval_env_step(actor_state)
@@ -621,7 +653,7 @@ class PPO(BaseAlgo):
         self._eval_mode()
         self.env.set_is_evaluating()
         if reset_env:
-            _ = self.env.reset_all()
+            _, _ = self.env.reset_all()
 
         for c in self.eval_callbacks:
             c.on_pre_evaluate_policy()
