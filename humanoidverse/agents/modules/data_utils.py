@@ -100,15 +100,17 @@ class RolloutStorage(nn.Module):
         batch_size = self.num_envs * self.num_transitions_per_env
         mini_batch_size = batch_size // num_mini_batches
         indices = torch.randperm(num_mini_batches*mini_batch_size, requires_grad=False, device=self.device)
-        
-        _buffer_dict = {key: getattr(self, key)[:].flatten(0, 1) for key in self.stored_keys}
-
+        _buffer_dict = {key: getattr(self, key)[:].flatten(0, 1) for key in self.stored_keys}# step, env,
+        b = num_mini_batches*mini_batch_size-1*self.num_envs
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
 
                 start = i*mini_batch_size
                 end = (i+1)*mini_batch_size
                 batch_idx = indices[start:end]
-
+                batch_idx_next = batch_idx+1*self.num_envs
+                batch_idx_next = torch.where(batch_idx_next > b, batch_idx, batch_idx_next)
                 _batch_buffer_dict = {key: _buffer_dict[key][batch_idx] for key in self.stored_keys}
+                _batch_buffer_dict["actor_obs_next"] = _buffer_dict["actor_obs"][batch_idx_next]
+                _batch_buffer_dict["critic_obs_next"] = _buffer_dict["critic_obs"][batch_idx_next]
                 yield _batch_buffer_dict

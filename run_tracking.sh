@@ -1,6 +1,7 @@
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/root/miniconda3/envs/hvgym1/lib/
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=1
 python humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
@@ -11,7 +12,7 @@ python humanoidverse/train_agent.py \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
 num_envs=4096 \
 project_name=MotionTracking \
-experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_Moig_interDR_50x5_Pos_Rep \
+experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_Moig_interDR_50x5_Pos_Rep_last \
 robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/motion_largebox_0d12_5x5_dr_init.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_penalty_degree=0.00001 \

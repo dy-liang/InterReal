@@ -114,7 +114,7 @@ class BaseTask():
         actor_state = {}
         actor_state["actions"] = actions
         obs_dict, _, _, _, featset = self.step(actor_state)
-
+        obs_dict["actions"] = actions
         return obs_dict, featset
     
     # def _refresh_env_idx_tensors(self, env_ids):

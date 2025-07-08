@@ -275,14 +275,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_body_key_contact = motion_res["body_contact"]
         self.ref_tar_contact = motion_res["obj_contact"]
         self.ref_ig = motion_res["ig"]
+        
+        # a1 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 1*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        # a2 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 2*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        # a3 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 3*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        # a4 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 4*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
+        # #print(ref_joint_pos[:,self.ppo_action_indices].unsqueeze(1), a1,a2,a3)
+        # self.motion_act_seq = torch.cat((a1*4.0,a2*4.0,a3*4.0,a4*4.0),dim=1)
+        # self.gt_act = ref_joint_pos[:,self.ppo_action_indices]*4.0
 
-        a1 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 1*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
-        a2 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 2*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
-        a3 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 3*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
-        a4 = self._motion_lib.get_motion_state(self.motion_ids, torch.clip(motion_times- 4*self.dt, 0,1), offset=offset)["dof"][:,self.ppo_action_indices].unsqueeze(1)
-        #print(ref_joint_pos[:,self.ppo_action_indices].unsqueeze(1), a1,a2,a3)
-        self.motion_act_seq = torch.cat((a1,a2,a3,a4),dim=1)
-        self.gt_act = ref_joint_pos[:,self.ppo_action_indices]*4.0
         ################### EXTEND Rigid body POS #####################
         rotated_pos_in_parent = my_quat_rotate(
             self.simulator._rigid_body_rot[:, self.extend_body_parent_ids].reshape(-1, 4),

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import copy
 from humanoidverse.agents.modules.ppo_modules import PPOActor, PPOCritic
@@ -103,6 +104,7 @@ class PPO(BaseAlgo):
         self._setup_storage()
 
     def _setup_models_and_optimizer(self):
+            
         self.actor = PPOActor(
             obs_dim_dict=self.algo_obs_dim_dict,
             module_config_dict=self.config.module_dict,
@@ -113,12 +115,16 @@ class PPO(BaseAlgo):
             self.enc = Encoder(self.actor, self.num_act, self.num_envs, self.device).to(self.device)
             self.encoder_optimizer = optim.Adam(self.enc.parameters(), lr=self.critic_learning_rate)
             print("Use encoder for actor", self.enc)
-        self.critic = PPOCritic(self.algo_obs_dim_dict,
-                                self.config.module_dict.critic).to(self.device)
-
+        self.critic = PPOCritic(obs_dim_dict=self.algo_obs_dim_dict,
+                                module_config_dict=self.config.module_dict,
+                                num_actions=self.num_act).to(self.device)
+        print(self.actor, self.critic)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_learning_rate)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_learning_rate)
         self.bc_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_learning_rate)
+
+        self.trans_optimizer = optim.Adam(list(self.actor.f_zs_enc_shared.parameters())+list(self.critic.transition_model_shared.parameters()), lr=self.critic_learning_rate)
+
 
     def _setup_storage(self):
         self.storage = RolloutStorage(self.env.num_envs, self.num_steps_per_env, self.device)
@@ -270,6 +276,8 @@ class PPO(BaseAlgo):
                 actor_state = {}
                 actor_state["actions"] = actions
                 obs_dict, rewards, dones, infos, featset = self.env.step(actor_state)
+                obs_dict["actions"] = copy.deepcopy(actions)
+
                 # {"gt_act" "hist_act_seq"}
                 # critic_obs = privileged_obs if privileged_obs is not None else obs
                 for obs_key in obs_dict.keys():
@@ -304,7 +312,7 @@ class PPO(BaseAlgo):
                     self.cur_reward_sum[new_ids] = 0
                     self.cur_episode_length[new_ids] = 0
             
-            # training enc
+            #training enc
             # enc_s = self.enc.encoder(obs_dict["actor_obs"].clone())
             # #r_seq = torch.zeros((self.num_envs, 4), requires_grad=False, device=self.device)
             # enc_loss = self.enc.update_extr(featset["hist_act_seq"], enc_s, self.num_envs)
@@ -350,7 +358,8 @@ class PPO(BaseAlgo):
             - returns (torch.Tensor): The computed returns for each step.
             - advantages (torch.Tensor): The normalized advantages for each step.
         """
-        last_values= self.critic.evaluate(last_obs_dict["critic_obs"]).detach()
+        #last_obs_dict["actions"] = actions
+        last_values= self.critic.evaluate(last_obs_dict, self.actor.f_zs_enc_shared).detach()
         advantage = 0
         
         values = policy_state_dict['values']
@@ -414,7 +423,8 @@ class PPO(BaseAlgo):
         return self.actor.act(obs_dict["actor_obs"])
     
     def _critic_eval_step(self, obs_dict):
-        return self.critic.evaluate(obs_dict["critic_obs"])
+        
+        return self.critic.evaluate(obs_dict, self.actor.f_zs_enc_shared)
     
     def _update_ppo(self, policy_state_dict, loss_dict):
         actions_batch = policy_state_dict['actions']
@@ -475,17 +485,24 @@ class PPO(BaseAlgo):
         critic_loss = self.value_loss_coef * value_loss
 
         # BC loss
+        out_zs = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs"])
+        out_zs_target = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs_next"]).detach()
+        out_zs = self.AvgL1Norm(out_zs)
+        input = torch.cat((out_zs, policy_state_dict["critic_obs_next"], actions_batch), dim=1)
+        out_next_zsa = self.critic.transition_model_shared(input)
+        trans_loss = F.mse_loss(out_next_zsa, out_zs_target)
+        self.trans_optimizer.zero_grad()
+        trans_loss.backward()
+        self.trans_optimizer.step()
+
         #pre_act = self.actor.act(policy_state_dict["actor_obs"])
-        bc_loss = (mu_batch - gt_act_batch).pow(2).mean() * 0.3
-        #self.actor_optimizer.zero_grad()
-        #bc_loss.backward()
-        #self.actor_optimizer.step()
+        #bc_loss = (mu_batch - gt_act_batch).pow(2).mean() * returns_batch.abs().mean().detach() * 0.1
 
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
         
         # print("skip backward")
-        (actor_loss + bc_loss).backward()
+        actor_loss.backward()
         critic_loss.backward()
 
         # Gradient step
@@ -498,14 +515,15 @@ class PPO(BaseAlgo):
         loss_dict['Value'] += value_loss.item()
         loss_dict['Surrogate'] += surrogate_loss.item()
         loss_dict['Entropy'] += entropy_loss.item()
-        loss_dict['BC'] += bc_loss.item()
+        loss_dict['BC'] += trans_loss.item()
         return loss_dict
 
     def set_learning_rate(self, actor_learning_rate, critic_learning_rate):
         self.actor_learning_rate = actor_learning_rate
         self.critic_learning_rate = critic_learning_rate
 
-
+    def AvgL1Norm(self, x, eps=1e-8):
+        return x/x.abs().mean(-1, keepdim=True).clamp(min=eps)
     @property
     def inference_model(self):
         return {
