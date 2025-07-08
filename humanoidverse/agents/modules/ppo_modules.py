@@ -30,7 +30,7 @@ class PPOActor(nn.Module):
 
         # self.act_module = BaseModule(obs_dim_dict, module_config_dict_actor)
         
-        hide_dim = 100
+        hide_dim = 128
 
         self.actor_model = nn.Sequential(   #s+a -> h
             nn.Linear(hide_dim * 2, 512),
@@ -121,22 +121,26 @@ class PPOCritic(nn.Module):
                 num_actions):
         super(PPOCritic, self).__init__()
 
-        hide_dim = 100
+        hide_dim = 128
         critic_dim = obs_dim_dict["actor_obs"] +  obs_dim_dict["critic_obs"]
         self.f_za_enc = nn.Sequential(       #h+a -> h
-            nn.Linear(critic_dim+num_actions, 512),
+            nn.Linear(critic_dim+num_actions, 1024),
             nn.ReLU(),
-            nn.Linear(512, hide_dim))
+            nn.Linear(1024, hide_dim))
         
         self.transition_model_shared = nn.Sequential( #h+a -> h'   #shared!
             nn.Linear(hide_dim+num_actions+obs_dim_dict["critic_obs"], 1024),
             nn.ReLU(),
-            nn.Linear(1024, hide_dim))
+            nn.Linear(1024, 256),            
+            nn.ReLU(),
+            nn.Linear(256, hide_dim))
 
         self.critic_model = nn.Sequential(       #h+a -> h
             nn.Linear(hide_dim * 3, 512),
             nn.ReLU(),
-            nn.Linear(512, 1))
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1))
         
         #self.critic_module = BaseModule(obs_dim_dict, module_config_dict)
 
@@ -144,14 +148,14 @@ class PPOCritic(nn.Module):
     def critic(self, obs, f_zs_enc_shared):
         critic_obs, critic_obs_priv, actions = obs["actor_obs"], obs["critic_obs"], obs["actions"]
         out_zs = f_zs_enc_shared(critic_obs).detach()
-        out_zs = AvgL1Norm(out_zs)
-        out_next_zs = self.transition_model_shared(torch.cat((out_zs, critic_obs_priv, actions), dim=1)).detach()
+        input = AvgL1Norm(torch.cat((out_zs, critic_obs_priv), dim=1))
+        out_next_zs = self.transition_model_shared(torch.cat((input,actions), dim=1)).detach()
 
         all_obs = torch.cat((critic_obs, critic_obs_priv), dim=1)
 
         out_sa = self.f_za_enc(torch.cat((all_obs, actions), dim=1))
         out_sa = AvgL1Norm(out_sa)
-
+        out_zs = AvgL1Norm(out_zs)
         critic_in = torch.cat((out_next_zs,out_zs, out_sa), dim=1)
 
         value = self.critic_model(critic_in)

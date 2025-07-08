@@ -412,7 +412,7 @@ class PPO(BaseAlgo):
         loss_dict['Value'] = 0
         loss_dict['Surrogate'] = 0
         loss_dict['Entropy'] = 0
-        loss_dict['BC'] = 0
+        loss_dict['Trans'] = 0
         return loss_dict
     
     def _update_algo_step(self, policy_state_dict, loss_dict):
@@ -487,10 +487,10 @@ class PPO(BaseAlgo):
         # BC loss
         out_zs = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs"])
         out_zs_target = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs_next"]).detach()
-        out_zs = self.AvgL1Norm(out_zs)
-        input = torch.cat((out_zs, policy_state_dict["critic_obs_next"], actions_batch), dim=1)
-        out_next_zsa = self.critic.transition_model_shared(input)
-        trans_loss = F.mse_loss(out_next_zsa, out_zs_target)
+        input = self.AvgL1Norm(torch.cat((out_zs, policy_state_dict["critic_obs_next"]), dim=1))
+        pre_next_zsa = self.critic.transition_model_shared(torch.cat((input, actions_batch), dim=1))
+        
+        trans_loss = F.mse_loss(pre_next_zsa, self.AvgL1Norm(out_zs_target))
         self.trans_optimizer.zero_grad()
         trans_loss.backward()
         self.trans_optimizer.step()
@@ -515,7 +515,7 @@ class PPO(BaseAlgo):
         loss_dict['Value'] += value_loss.item()
         loss_dict['Surrogate'] += surrogate_loss.item()
         loss_dict['Entropy'] += entropy_loss.item()
-        loss_dict['BC'] += trans_loss.item()
+        loss_dict['Trans'] += trans_loss.item()
         return loss_dict
 
     def set_learning_rate(self, actor_learning_rate, critic_learning_rate):
