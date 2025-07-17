@@ -685,7 +685,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     
     def _get_obs_ref_motion_phase(self):
         # print(self._ref_motion_phase)
-        return self.motions_phase
+        return self._ref_motion_phase.unsqueeze(1) #self.motions_phase
     
     def _get_obs_vr_3point_pos(self):
         return self._obs_vr_3point_pos

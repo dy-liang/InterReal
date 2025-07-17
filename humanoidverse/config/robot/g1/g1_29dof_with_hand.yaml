@@ -20,7 +20,7 @@ robot:
   upper_body_actions_dim: 28 # Yuanhang
   policy_obs_dim: -1 # Jiawei
   critic_obs_dim: -1
-  motion_num: 4
+  motion_num: 1
   # policy_obs_dim: 45 # Jiawei
   # critic_obs_dim: 238
   # policy_obs_dim: 45 # Jiawei

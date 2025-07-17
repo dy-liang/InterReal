@@ -14,7 +14,7 @@ obs:
       #tar_rot,
       #key_robot_contact,
       #ig,
-      #ref_motion_phase,
+      ref_motion_phase,
       # dif_local_rigid_body_pos,
       # local_ref_rigid_body_pos,
       # history,
@@ -33,7 +33,7 @@ obs:
       tar_rot,
       key_robot_contact,
       ig,
-      #ref_motion_phase,
+      ref_motion_phase,
       dif_local_rigid_body_pos,
       local_ref_rigid_body_pos,
       history_critic
@@ -42,12 +42,12 @@ obs:
   obs_auxiliary: # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
 
     history_actor: {
-      base_ang_vel: 4,
-      projected_gravity: 4,
-      dof_pos: 4,
-      dof_vel: 4,
-      actions: 4,
-      #global_tar_pos: 4,
+      base_ang_vel: 3,
+      projected_gravity: 3,
+      dof_pos: 3,
+      dof_vel: 3,
+      actions: 3,
+      #global_tar_pos: 3,
       #global_tar_vel: 3,
       #tar_rot: 3,
       #ig: 3,
