@@ -487,7 +487,7 @@ class PPO(BaseAlgo):
         # BC loss
         out_zs = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs"])
         out_zs_target = self.actor.f_zs_enc_shared(policy_state_dict["actor_obs_next"]).detach()
-        input = self.AvgL1Norm(torch.cat((out_zs, policy_state_dict["critic_obs_next"]), dim=1))
+        input = self.AvgL1Norm(torch.cat((out_zs, policy_state_dict["critic_obs"]), dim=1))
         pre_next_zsa = self.critic.transition_model_shared(torch.cat((input, actions_batch), dim=1))
         
         trans_loss = F.mse_loss(pre_next_zsa, self.AvgL1Norm(out_zs_target))
