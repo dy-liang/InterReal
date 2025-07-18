@@ -143,7 +143,7 @@ class PPO(BaseAlgo):
         self.storage.register_key('action_mean', shape=(self.num_act,), dtype=torch.float)
         self.storage.register_key('action_sigma', shape=(self.num_act,), dtype=torch.float)
         self.storage.register_key('gt_act', shape=(self.num_act,), dtype=torch.float)
-        self.storage.register_key('hist_act_seq', shape=(4, self.num_act), dtype=torch.float)
+        self.storage.register_key('hist_act_seq', shape=(3, self.num_act), dtype=torch.float)
 
     def _eval_mode(self):
         self.actor.eval()
