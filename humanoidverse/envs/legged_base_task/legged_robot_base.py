@@ -205,7 +205,7 @@ class LeggedRobotBase(BaseTask):
 
         # if self.episode_length_buf[0] == 1:
         #     import ipdb; ipdb.set_trace()
-
+        self.obs_buf_dict["body_gt_error"] = self.body_gt_error
         return self.obs_buf_dict, self.rew_buf, self.reset_buf, self.extras
 
     def _pre_physics_step(self, actions):
@@ -490,9 +490,15 @@ class LeggedRobotBase(BaseTask):
             adds each terms to the episode sums and to the total reward
         """
         self.rew_buf[:] = 0.
-        for i in range(len(self.reward_functions)):
+        self.body_gt_error[:] = 0.
+        for i in range(len(self.reward_functions)): # 18+1
             name = self.reward_names[i]
-            rew = self.reward_functions[i]() * self.reward_scales[name]
+            if name=="teleop_body_position_extend" or name=="teleop_body_rotation_extend" or name=="teleop_tar_pos" or name=="teleop_tar_rot":
+                rew, error = self.reward_functions[i]() 
+                self.body_gt_error += error # must be ground-true error
+            else:
+                rew = self.reward_functions[i]() 
+            rew = rew * self.reward_scales[name]
             try:
                 assert rew.shape[0] == self.num_envs
             except:
@@ -501,14 +507,17 @@ class LeggedRobotBase(BaseTask):
             if name in self.config.rewards.reward_penalty_reward_names:
                 if self.config.rewards.reward_penalty_curriculum:
                     rew *= self.reward_penalty_scale
-            self.rew_buf += rew
+            #self.rew_buf += rew
+            self.rew_buf[:,i] = rew
+
             self.episode_sums[name] += rew
         if self.config.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
         # add termination reward after clipping
         if "termination" in self.reward_scales:
             rew = self._reward_termination() * self.reward_scales["termination"]
-            self.rew_buf += rew
+            #self.rew_buf += rew
+            self.rew_buf[:,-1] = rew
             self.episode_sums["termination"] += rew
 
         if self.use_reward_penalty_curriculum:

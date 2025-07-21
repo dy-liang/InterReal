@@ -8,7 +8,8 @@ from humanoidverse.envs.base_task.base_task import BaseTask
 from humanoidverse.agents.base_algo.base_algo import BaseAlgo
 from humanoidverse.agents.callbacks.base_callback import RL_EvalCallback
 from humanoidverse.utils.average_meters import TensorAverageMeterDict
-
+from humanoidverse.agents.meta_agent.sac import HighSAC
+import numpy as np
 from torch.utils.tensorboard import SummaryWriter as TensorboardSummaryWriter
 import time
 import os
@@ -41,6 +42,7 @@ class PPO(BaseAlgo):
         self.learn_time = 0
 
         self._init_config()
+        self._init_high_policy(device)
 
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -56,6 +58,9 @@ class PPO(BaseAlgo):
         self.eval_callbacks: list[RL_EvalCallback] = []
         self.episode_env_tensors = TensorAverageMeterDict()
         _ = self.env.reset_all()
+
+    def _init_high_policy(self, device):
+        self.high_agent = HighSAC(device, self.num_envs)
 
     def _init_config(self):
         # Env related Config
@@ -197,9 +202,27 @@ class PPO(BaseAlgo):
 
             # Jiawei: Need to return obs_dict to update the obs_dict for the next iteration
             # Otherwise, we will keep using the initial obs_dict for the whole training process
-            obs_dict =self._rollout_step(obs_dict)
+            #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
+
+            state = obs_dict["actor_obs"][:,:79]
+            result_hist = copy.deepcopy(obs_dict["body_gt_error"])
+            act_weights = self.high_agent.select_action(state, evaluate=True) # apply reward weights (b,act_dims)
+
+            obs_dict =self._rollout_step(obs_dict, act_weights)
+
+            next_state = obs_dict["actor_obs"][:,:79]
+            result_cur = obs_dict["body_gt_error"]
+            rewards = ((result_hist - result_cur).mean()).repeat(self.num_envs)
+
+            self.high_agent.buffer.push(state, act_weights, rewards, next_state)
+            qf1_loss, qf2_loss, policy_loss, alpha_loss, _ = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
 
             loss_dict = self._training_step()
+
+            loss_dict['HSAC_q1'] = qf1_loss
+            loss_dict['HSAC_q2'] = qf2_loss
+            loss_dict['HSAC_pi'] = policy_loss
+            loss_dict['HSAC_alph'] = alpha_loss
 
             self.stop_time = time.time()
             self.learn_time = self.stop_time - self.start_time
@@ -241,8 +264,10 @@ class PPO(BaseAlgo):
 
         return policy_state_dict
 
-    def _rollout_step(self, obs_dict):
-        with torch.inference_mode():
+    def _rollout_step(self, obs_dict, rew_weights):
+        rew_weights = rew_weights.mean(0) # N,19
+        #with torch.inference_mode():
+        with torch.no_grad():
             for i in range(self.num_steps_per_env):
                 # Compute the actions and values
                 # actions = self.actor.act(obs_dict["actor_obs"]).detach()
@@ -254,7 +279,8 @@ class PPO(BaseAlgo):
 
                 ## Append states to storage
                 for obs_key in obs_dict.keys():
-                    self.storage.update_key(obs_key, obs_dict[obs_key])
+                    if obs_key != "body_gt_error":
+                        self.storage.update_key(obs_key, obs_dict[obs_key])
 
                 for obs_ in policy_state_dict.keys():
                     self.storage.update_key(obs_, policy_state_dict[obs_])
@@ -264,11 +290,15 @@ class PPO(BaseAlgo):
                 obs_dict, rewards, dones, infos = self.env.step(actor_state)
                 # critic_obs = privileged_obs if privileged_obs is not None else obs
                 for obs_key in obs_dict.keys():
-                    obs_dict[obs_key] = obs_dict[obs_key].to(self.device)
+                    if obs_key != "body_gt_error":
+                        obs_dict[obs_key] = obs_dict[obs_key].to(self.device)
                 rewards, dones = rewards.to(self.device), dones.to(self.device)
 
+                # apply learning reward weights
+                ft_rewards = (rewards * (rew_weights + 1.)).sum(-1)
+
                 self.episode_env_tensors.add(infos["to_log"])
-                rewards_stored = rewards.clone().unsqueeze(1)
+                rewards_stored = ft_rewards.clone().unsqueeze(1)
                 if 'time_outs' in infos:
                     rewards_stored += self.gamma * policy_state_dict['values'] * infos['time_outs'].unsqueeze(1).to(self.device)
                 assert len(rewards_stored.shape) == 2
@@ -276,13 +306,13 @@ class PPO(BaseAlgo):
                 self.storage.update_key('dones', dones.unsqueeze(1))
                 self.storage.increment_step()
 
-                self._process_env_step(rewards, dones, infos)
+                self._process_env_step(ft_rewards, dones, infos)
 
                 if self.log_dir is not None:
                     # Book keeping
                     if 'episode' in infos:
                         self.ep_infos.append(infos['episode'])
-                    self.cur_reward_sum += rewards
+                    self.cur_reward_sum += ft_rewards
                     self.cur_episode_length += 1
                     new_ids = (dones > 0).nonzero(as_tuple=False)
                     self.rewbuffer.extend(self.cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
@@ -381,6 +411,10 @@ class PPO(BaseAlgo):
         loss_dict['Value'] = 0
         loss_dict['Surrogate'] = 0
         loss_dict['Entropy'] = 0
+        loss_dict['HSAC_q1'] = 0
+        loss_dict['HSAC_q2'] = 0
+        loss_dict['HSAC_pi'] = 0
+        loss_dict['HSAC_alph'] = 0
         return loss_dict
     
     def _update_algo_step(self, policy_state_dict, loss_dict):

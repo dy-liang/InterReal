@@ -89,8 +89,9 @@ class BaseTask():
 
     def _init_buffers(self):
         self.obs_buf_dict = {}
-        self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.rew_buf = torch.zeros((self.num_envs,len(self.config.rewards.reward_scales.keys())), device=self.device, dtype=torch.float) # (b,n_terms)
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
+        self.body_gt_error = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.extras = {}
@@ -111,6 +112,7 @@ class BaseTask():
         actor_state = {}
         actor_state["actions"] = actions
         obs_dict, _, _, _ = self.step(actor_state)
+        obs_dict["body_gt_error"] = self.body_gt_error
         return obs_dict
     
     # def _refresh_env_idx_tensors(self, env_ids):
