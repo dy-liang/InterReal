@@ -5,7 +5,7 @@ from torch.optim import Adam
 from humanoidverse.agents.meta_agent.utils import soft_update, hard_update
 from humanoidverse.agents.meta_agent.model import GaussianPolicy, QNetwork, DeterministicPolicy
 from humanoidverse.agents.meta_agent.replay_memory import ParallelReplayBuffer
-
+import numpy as np
 
 class HighSAC(object):
     def __init__(self, device, num_envs):
@@ -20,8 +20,8 @@ class HighSAC(object):
         self.hidden_size = 256
         self.device = device
         self.action_nums = 19
-        self.lr = 1e-4
-
+        self.lr = 1e-5
+        self.init_temperature = 0.1
         self.critic = QNetwork(num_inputs, self.action_nums, self.hidden_size).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=self.lr)
 
@@ -29,11 +29,12 @@ class HighSAC(object):
         hard_update(self.critic_target, self.critic)
         self.buffer = ParallelReplayBuffer(capacity=4096000, state_dim=79, action_dim=self.action_nums, num_envs=num_envs)
         if self.policy_type == "Gaussian":
-            # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
             if self.automatic_entropy_tuning is True:
-                self.target_entropy = -torch.prod(torch.Tensor([self.action_nums]).to(self.device)).item()
-                self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-                self.alpha_optim = Adam([self.log_alpha], lr=self.lr)
+                self.alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)
+                self.alpha.requires_grad = True
+                # set target entropy to -|A|
+                self.target_entropy = -self.action_nums
+                self.alpha_optim = Adam([self.alpha], lr=self.lr)
 
             self.policy = GaussianPolicy(num_inputs, self.action_nums, self.hidden_size).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=self.lr)
@@ -65,11 +66,11 @@ class HighSAC(object):
         with torch.no_grad():
             next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
             qf1_next_target, qf2_next_target = self.critic_target(next_state_batch, next_state_action)
-            min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
+            min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha.detach() * next_state_log_pi
             next_q_value = reward_batch +  self.gamma * (min_qf_next_target)
         qf1, qf2 = self.critic(state_batch, action_batch)  # Two Q-functions to mitigate positive bias in the policy improvement step
-        qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        qf1_loss = F.mse_loss(qf1, next_q_value.detach())  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        qf2_loss = F.mse_loss(qf2, next_q_value.detach())  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
         qf_loss = qf1_loss + qf2_loss
 
         self.critic_optim.zero_grad()
@@ -81,19 +82,19 @@ class HighSAC(object):
         qf1_pi, qf2_pi = self.critic(state_batch, pi)
         min_qf_pi = torch.min(qf1_pi, qf2_pi)
 
-        policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
+        policy_loss = ((self.alpha.detach() * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
 
         self.policy_optim.zero_grad()
         policy_loss.backward()
         self.policy_optim.step()
+
         if self.automatic_entropy_tuning:
-            alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
+            alpha_loss = -(self.alpha * (log_pi + self.target_entropy).detach()).mean()
 
             self.alpha_optim.zero_grad()
             alpha_loss.backward()
             self.alpha_optim.step()
 
-            self.alpha = self.log_alpha.exp()
             alpha_tlogs = self.alpha.clone() # For TensorboardX logs
         else:
             alpha_loss = torch.tensor(0.).to(self.device)
@@ -103,7 +104,7 @@ class HighSAC(object):
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
 
-        return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
+        return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_tlogs.item()
 
     # Save model parameters
     def save_checkpoint(self, env_name, suffix="", ckpt_path=None):

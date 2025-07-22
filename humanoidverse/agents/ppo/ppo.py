@@ -204,7 +204,7 @@ class PPO(BaseAlgo):
             # Otherwise, we will keep using the initial obs_dict for the whole training process
             #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
 
-            state = obs_dict["actor_obs"][:,:79]
+            state = obs_dict["actor_obs"][:,:79] # state featrue:TODO
             result_hist = copy.deepcopy(obs_dict["body_gt_error"])
             act_weights = self.high_agent.select_action(state, evaluate=True) # apply reward weights (b,act_dims)
 
@@ -212,17 +212,20 @@ class PPO(BaseAlgo):
 
             next_state = obs_dict["actor_obs"][:,:79]
             result_cur = obs_dict["body_gt_error"]
-            rewards = ((result_hist - result_cur).mean()).repeat(self.num_envs)
+            #rewards = ((result_hist - result_cur).mean()).repeat(self.num_envs) #适用于zero time初始化
+            rewards = (result_hist - result_cur) # time初始化
 
             self.high_agent.buffer.push(state, act_weights, rewards, next_state)
-            qf1_loss, qf2_loss, policy_loss, alpha_loss, _ = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
 
             loss_dict = self._training_step()
 
             loss_dict['HSAC_q1'] = qf1_loss
             loss_dict['HSAC_q2'] = qf2_loss
             loss_dict['HSAC_pi'] = policy_loss
-            loss_dict['HSAC_alph'] = alpha_loss
+            loss_dict['HSAC_alph'] = alpha
 
             self.stop_time = time.time()
             self.learn_time = self.stop_time - self.start_time
@@ -265,7 +268,7 @@ class PPO(BaseAlgo):
         return policy_state_dict
 
     def _rollout_step(self, obs_dict, rew_weights):
-        rew_weights = rew_weights.mean(0) # N,19
+        #rew_weights = rew_weights.mean(0) # N,19
         #with torch.inference_mode():
         with torch.no_grad():
             for i in range(self.num_steps_per_env):

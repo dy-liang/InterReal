@@ -35,5 +35,5 @@ class ParallelReplayBuffer:
         if not self.full:
             idxs_next = np.where(idxs+1>=self.position, idxs, idxs+1)
         else:
-            idxs_next = np.where(idxs+1>=self.capacity, idxs, idxs+1)
-        return self.states[idxs], self.actions[idxs], self.rewards[idxs_next], self.next_states[idxs]
+            idxs_next = np.where(idxs+1*self.num_envs>=self.capacity, idxs, idxs+1*self.num_envs)
+        return self.states[idxs], self.actions[idxs], self.rewards[idxs_next], self.next_states[idxs_next]
