@@ -111,7 +111,14 @@ def main(config: OmegaConf):
 
 
     experiment_save_dir = Path(config.experiment_dir)
-    experiment_save_dir.mkdir(exist_ok=True, parents=True)
+    experiment_save_dir.mkdir(exist_ok=True, parents=True) #
+
+    from shutil import copyfile
+    code_save_dir = Path(config.experiment_dir) / "code"
+    code_save_dir.mkdir(exist_ok=True, parents=True) #
+    copyfile("humanoidverse/agents/meta_agent/sac.py", os.path.join(str(code_save_dir), os.path.basename("humanoidverse/agents/meta_agent/sac.py")))
+    copyfile('humanoidverse/agents/ppo/ppo.py', os.path.join(str(code_save_dir), os.path.basename('humanoidverse/agents/ppo/ppo.py')))
+    copyfile('humanoidverse/agents/meta_agent/replay_memory.py', os.path.join(str(code_save_dir), os.path.basename('humanoidverse/agents/meta_agent/replay_memory.py')))
 
     logger.info(f"Saving config file to {experiment_save_dir}")
     with open(experiment_save_dir / "config.yaml", "w") as file:

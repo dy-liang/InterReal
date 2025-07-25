@@ -717,6 +717,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     ###############################################################
 
     def _update_adaptive_sigma(self, error:torch.Tensor, term:str):
+        if not self.config.rewards.adaptive_tracking_sigma.enable:
+            return
         alpha = self.config.rewards.adaptive_tracking_sigma.alpha
         
         self._reward_error_ema[term] = self._reward_error_ema[term] * (1-alpha) + error.mean().item() * alpha
@@ -738,7 +740,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._update_adaptive_sigma(diff_body_pos_dist_upper, 'teleop_upper_body_pos')
         self._update_adaptive_sigma(diff_body_pos_dist_lower, 'teleop_lower_body_pos')
 
-        return r_body_pos, diff_body_pos_dist_upper+diff_body_pos_dist_lower
+        return r_body_pos, (diff_body_pos_dist_upper+diff_body_pos_dist_lower)*10.
     
     def _reward_teleop_vr_3point(self):
         vr_3point_diff = self.dif_global_body_pos[:, self.motion_tracking_id, :]
@@ -761,20 +763,20 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         diff_body_rot_dist = (rotation_diff**2).mean(dim=-1).mean(dim=-1)
         r_body_rot = torch.exp(-diff_body_rot_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
         self._update_adaptive_sigma(diff_body_rot_dist, 'teleop_body_rot')
-        return r_body_rot, diff_body_rot_dist
+        return r_body_rot
 
     def _reward_teleop_tar_pos(self):
 
         tar_position_dist = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
         t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_pos)
         self._update_adaptive_sigma(tar_position_dist, 'teleop_tar_pos')
-        return t_pos, tar_position_dist
+        return t_pos, tar_position_dist*10.
     
     def _reward_teleop_tar_rot(self):
         tar_rotation_dist = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
         t_rot = torch.exp(-tar_rotation_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_rot)
         self._update_adaptive_sigma(tar_rotation_dist, 'teleop_tar_rot')
-        return t_rot, tar_rotation_dist
+        return t_rot
 
     def _reward_teleop_tar_vel(self):
 
@@ -802,7 +804,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         diff_joint_pos_dist = (joint_pos_diff**2).mean(dim=-1)
         r_joint_pos = torch.exp(-diff_joint_pos_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_pos)
         self._update_adaptive_sigma(diff_joint_pos_dist, 'teleop_joint_pos')
-        return r_joint_pos
+        return r_joint_pos, diff_joint_pos_dist
     
     def _reward_teleop_joint_velocity(self):
         joint_vel_diff = self.dif_joint_velocities

@@ -493,7 +493,8 @@ class LeggedRobotBase(BaseTask):
         self.body_gt_error[:] = 0.
         for i in range(len(self.reward_functions)): # 18+1
             name = self.reward_names[i]
-            if name=="teleop_body_position_extend" or name=="teleop_body_rotation_extend" or name=="teleop_tar_pos" or name=="teleop_tar_rot":
+            #if name=="teleop_body_position_extend" or name=="teleop_body_rotation_extend" or name=="teleop_tar_pos" or name=="teleop_tar_rot":
+            if name=="teleop_body_position_extend" or name=="teleop_joint_position" or name=="teleop_tar_pos":
                 rew, error = self.reward_functions[i]() 
                 self.body_gt_error += error # must be ground-true error
             else:

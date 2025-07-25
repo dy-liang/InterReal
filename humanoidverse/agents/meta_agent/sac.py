@@ -12,7 +12,6 @@ class HighSAC(object):
         num_inputs = 79
         self.gamma = 0.99
         self.tau = 0.005
-        self.alpha = 0.2
 
         self.policy_type = "Gaussian"
         self.target_update_interval = 1
@@ -27,14 +26,14 @@ class HighSAC(object):
 
         self.critic_target = QNetwork(num_inputs, self.action_nums, self.hidden_size).to(self.device)
         hard_update(self.critic_target, self.critic)
-        self.buffer = ParallelReplayBuffer(capacity=4096000, state_dim=79, action_dim=self.action_nums, num_envs=num_envs)
+        self.buffer = ParallelReplayBuffer(capacity=4096000, state_dim=num_inputs, action_dim=self.action_nums, num_envs=num_envs)
         if self.policy_type == "Gaussian":
             if self.automatic_entropy_tuning is True:
-                self.alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)
-                self.alpha.requires_grad = True
+                self.log_alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)
+                self.log_alpha.requires_grad = True
                 # set target entropy to -|A|
                 self.target_entropy = -self.action_nums
-                self.alpha_optim = Adam([self.alpha], lr=self.lr)
+                self.alpha_optim = Adam([self.log_alpha], lr=self.lr)
 
             self.policy = GaussianPolicy(num_inputs, self.action_nums, self.hidden_size).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=self.lr)
@@ -45,7 +44,11 @@ class HighSAC(object):
             self.policy = DeterministicPolicy(num_inputs, self.action_nums, self.hidden_size).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=self.lr)
         print(self.policy,self.critic)
-        
+
+    @property
+    def alpha(self):
+        return self.log_alpha.exp()
+
     def select_action(self, state, evaluate=False):
         #state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if evaluate is False:
