@@ -196,6 +196,7 @@ class PPO(BaseAlgo):
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
         T_start = 0
+        High_iter = 50
         # do not use track, because it will confict with motion loading bar
         # for it in track(range(self.current_learning_iteration, tot_iter), description="Learning Iterations"):
         for it in range(self.current_learning_iteration, tot_iter):
@@ -204,35 +205,36 @@ class PPO(BaseAlgo):
             # Jiawei: Need to return obs_dict to update the obs_dict for the next iteration
             # Otherwise, we will keep using the initial obs_dict for the whole training process
             #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
-            if it >= T_start:
-                state = obs_dict["sac_obs"] # state featrue:TODO
+            if it % High_iter ==0:
+                state = obs_dict["sac_obs"] # state featrue:(envs, N)
                 result_hist = copy.deepcopy(obs_dict["body_gt_error"])
-                act_weights = self.high_agent.select_action(state, evaluate=True) * 0.5 # apply reward weights (b,act_dims)
-            else:
-                act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
+                act_weights = self.high_agent.select_action(state, evaluate=True) # apply reward weights (b,act_dims)
+            # else:
+            #     act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
             obs_dict =self._rollout_step(obs_dict, act_weights)
 
-            if it >= T_start:
+            if it % High_iter ==0:
                 next_state = obs_dict["sac_obs"]
                 result_cur = copy.deepcopy(obs_dict["body_gt_error"])
 
-                rewards = (result_hist - result_cur) * 24. # time初始化
+                rewards = (result_hist - result_cur) # time初始化
 
                 self.high_agent.buffer.push(state, act_weights, rewards, next_state)
-                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
-                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
-                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+                for _ in range(8):
+                    qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs//8)
+                #qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+                #qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
 
             loss_dict = self._training_step()
 
-            if it > T_start:
-                loss_dict['HSAC_q1'] = qf1_loss
-                loss_dict['HSAC_q2'] = qf2_loss
-                loss_dict['HSAC_pi'] = policy_loss
-                loss_dict['HSAC_alph'] = alpha
-                loss_dict['HSAC_std'] = act_weights.std(1).mean().cpu()
-                loss_dict['HSAC_mean'] = act_weights.mean(1).mean().cpu()
-                loss_dict['HSAC_rew'] = rewards.mean().cpu()
+            #if it % High_iter ==0:
+            loss_dict['HSAC_q1'] = qf1_loss
+            loss_dict['HSAC_q2'] = qf2_loss
+            loss_dict['HSAC_pi'] = policy_loss
+            loss_dict['HSAC_alph'] = alpha
+            loss_dict['HSAC_std'] = act_weights.std(1).mean().cpu()
+            loss_dict['HSAC_mean'] = act_weights.mean(1).mean().cpu()
+            loss_dict['HSAC_rew'] = rewards.mean().cpu()
 
             self.stop_time = time.time()
             self.learn_time = self.stop_time - self.start_time
@@ -278,7 +280,7 @@ class PPO(BaseAlgo):
         #rew_weights = rew_weights.mean(0) # N,19
         #with torch.inference_mode():
         with torch.no_grad():
-            self.body_gt_error = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+            #self.body_gt_error = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
             for i in range(self.num_steps_per_env):
                 # Compute the actions and values
                 # actions = self.actor.act(obs_dict["actor_obs"]).detach()
@@ -299,7 +301,7 @@ class PPO(BaseAlgo):
                 actor_state = {}
                 actor_state["actions"] = actions
                 obs_dict, rewards, dones, infos = self.env.step(actor_state)
-                self.body_gt_error +=obs_dict["body_gt_error"]
+                #self.body_gt_error +=obs_dict["body_gt_error"]
                 # critic_obs = privileged_obs if privileged_obs is not None else obs
                 for obs_key in obs_dict.keys():
                     if obs_key != "body_gt_error":
@@ -332,8 +334,8 @@ class PPO(BaseAlgo):
                     self.lenbuffer.extend(self.cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
                     self.cur_reward_sum[new_ids] = 0
                     self.cur_episode_length[new_ids] = 0
-            self.body_gt_error = self.body_gt_error/self.num_steps_per_env
-            obs_dict["body_gt_error"] = self.body_gt_error
+            #self.body_gt_error = self.body_gt_error/self.num_steps_per_env
+            #obs_dict["body_gt_error"] = self.body_gt_error
             self.stop_time = time.time()
             self.collection_time = self.stop_time - self.start_time
             self.start_time = self.stop_time

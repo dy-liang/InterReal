@@ -19,7 +19,7 @@ class HighSAC(object):
         self.hidden_size = 512
         self.device = device
         self.action_nums = 19
-        self.lr = 1e-5
+        self.lr = 3e-4
         self.init_temperature = 0.1
         self.critic = QNetwork(num_inputs, self.action_nums, self.hidden_size).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=self.lr)
