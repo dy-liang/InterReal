@@ -39,20 +39,18 @@ obs:
       history_critic
     ]
 
-    # sac_obs: [
-    #   base_lin_pos,
-    #   base_ang_pos,
-    #   projected_gravity,
-    #   dof_pos,
-    #   actions,
-    #   global_tar_pos,
-    #   tar_rot,
-    #   key_robot_contact,
-    #   ig,
-    #   ref_motion_phase,
-    #   dif_local_rigid_body_pos,
-    #   local_ref_rigid_body_pos,
-    # ]
+    sac_obs: [
+      projected_gravity,
+      dof_pos,
+      actions,
+      global_tar_pos,
+      tar_rot,
+      key_robot_contact,
+      ig,
+      ref_motion_phase,
+      dif_local_rigid_body_pos,
+      local_ref_rigid_body_pos,
+    ]
   obs_auxiliary: # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
 
     history_actor: {

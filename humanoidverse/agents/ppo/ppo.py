@@ -195,7 +195,7 @@ class PPO(BaseAlgo):
         num_learning_iterations = self.num_learning_iterations
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
-
+        T_start = 0
         # do not use track, because it will confict with motion loading bar
         # for it in track(range(self.current_learning_iteration, tot_iter), description="Learning Iterations"):
         for it in range(self.current_learning_iteration, tot_iter):
@@ -204,32 +204,35 @@ class PPO(BaseAlgo):
             # Jiawei: Need to return obs_dict to update the obs_dict for the next iteration
             # Otherwise, we will keep using the initial obs_dict for the whole training process
             #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
-            
-            state = obs_dict["actor_obs"][:,:79] # state featrue:TODO
-            result_hist = copy.deepcopy(obs_dict["body_gt_error"])
-            act_weights = self.high_agent.select_action(state, evaluate=True) # apply reward weights (b,act_dims)
+            if it >= T_start:
+                state = obs_dict["sac_obs"] # state featrue:TODO
+                result_hist = copy.deepcopy(obs_dict["body_gt_error"])
+                act_weights = self.high_agent.select_action(state, evaluate=True) * 0.5 # apply reward weights (b,act_dims)
+            else:
+                act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
+            obs_dict =self._rollout_step(obs_dict, act_weights)
 
-            obs_dict =self._rollout_step(obs_dict, act_weights * 0.5)
+            if it >= T_start:
+                next_state = obs_dict["sac_obs"]
+                result_cur = copy.deepcopy(obs_dict["body_gt_error"])
 
-            next_state = obs_dict["actor_obs"][:,:79]
-            result_cur = obs_dict["body_gt_error"]
+                rewards = (result_hist - result_cur) * 24. # time初始化
 
-            rewards = (result_hist - result_cur) * 24. # time初始化
-
-            self.high_agent.buffer.push(state, act_weights, rewards, next_state)
-            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
-            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
-            qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+                self.high_agent.buffer.push(state, act_weights, rewards, next_state)
+                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
+                qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs*2)
 
             loss_dict = self._training_step()
 
-            loss_dict['HSAC_q1'] = qf1_loss
-            loss_dict['HSAC_q2'] = qf2_loss
-            loss_dict['HSAC_pi'] = policy_loss
-            loss_dict['HSAC_alph'] = alpha
-            loss_dict['HSAC_std'] = act_weights.std(1).mean().cpu()
-            loss_dict['HSAC_mean'] = act_weights.mean(1).mean().cpu()
-            loss_dict['HSAC_rew'] = rewards.mean().cpu()
+            if it > T_start:
+                loss_dict['HSAC_q1'] = qf1_loss
+                loss_dict['HSAC_q2'] = qf2_loss
+                loss_dict['HSAC_pi'] = policy_loss
+                loss_dict['HSAC_alph'] = alpha
+                loss_dict['HSAC_std'] = act_weights.std(1).mean().cpu()
+                loss_dict['HSAC_mean'] = act_weights.mean(1).mean().cpu()
+                loss_dict['HSAC_rew'] = rewards.mean().cpu()
 
             self.stop_time = time.time()
             self.learn_time = self.stop_time - self.start_time
@@ -304,8 +307,9 @@ class PPO(BaseAlgo):
                 rewards, dones = rewards.to(self.device), dones.to(self.device)
 
                 # apply learning reward weights
-                ft_rewards = (rewards * (rew_weights + 1.)).sum(-1)
-
+                ft_rewards_exp = torch.pow(rewards[:,:12], (rew_weights[:,:12] + 1.)).sum(-1) #(rewards * (rew_weights + 1.)).sum(-1)
+                ft_rewards_mul = (rewards[:,12:] * (rew_weights[:,12:] + 1.)).sum(-1)
+                ft_rewards = ft_rewards_exp + ft_rewards_mul
                 self.episode_env_tensors.add(infos["to_log"])
                 rewards_stored = ft_rewards.clone().unsqueeze(1)
                 if 'time_outs' in infos:

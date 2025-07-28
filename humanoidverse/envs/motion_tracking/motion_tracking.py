@@ -394,12 +394,14 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         lower_body_diff_norm = lower_body_diff.norm(dim=-1).mean()
         vr_3point_diff_norm = vr_3point_diff.norm(dim=-1).mean()
         joint_pos_diff_norm = joint_pos_diff.norm(dim=-1).mean()
+        tar_pos_diff_norm = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
 
         self.log_dict["upper_body_diff_norm"] = upper_body_diff_norm
         self.log_dict["lower_body_diff_norm"] = lower_body_diff_norm
         self.log_dict["vr_3point_diff_norm"] = vr_3point_diff_norm
         self.log_dict["joint_pos_diff_norm"] = joint_pos_diff_norm
-        
+        self.log_dict["tar_pos_diff_norm"] = tar_pos_diff_norm
+
 
     def _draw_debug_vis(self):
         self.simulator.clear_lines()
@@ -740,7 +742,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._update_adaptive_sigma(diff_body_pos_dist_upper, 'teleop_upper_body_pos')
         self._update_adaptive_sigma(diff_body_pos_dist_lower, 'teleop_lower_body_pos')
 
-        return r_body_pos, (diff_body_pos_dist_upper+diff_body_pos_dist_lower)*10.
+        return r_body_pos, (diff_body_pos_dist_upper+diff_body_pos_dist_lower)
     
     def _reward_teleop_vr_3point(self):
         vr_3point_diff = self.dif_global_body_pos[:, self.motion_tracking_id, :]
@@ -770,7 +772,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         tar_position_dist = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
         t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_pos)
         self._update_adaptive_sigma(tar_position_dist, 'teleop_tar_pos')
-        return t_pos, tar_position_dist*10.
+        return t_pos, tar_position_dist
     
     def _reward_teleop_tar_rot(self):
         tar_rotation_dist = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)

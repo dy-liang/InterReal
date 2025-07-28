@@ -9,14 +9,14 @@ import numpy as np
 
 class HighSAC(object):
     def __init__(self, device, num_envs):
-        num_inputs = 79
+        num_inputs = 547
         self.gamma = 0.99
         self.tau = 0.005
 
         self.policy_type = "Gaussian"
         self.target_update_interval = 1
         self.automatic_entropy_tuning = True
-        self.hidden_size = 256
+        self.hidden_size = 512
         self.device = device
         self.action_nums = 19
         self.lr = 1e-5
