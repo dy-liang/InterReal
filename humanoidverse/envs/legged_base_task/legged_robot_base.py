@@ -932,6 +932,9 @@ class LeggedRobotBase(BaseTask):
     
     def _get_obs_tar_rot(self,):
         return self.simulator.tar_root_states[:, 3:7]
+
+    def _get_obs_reward(self,):
+        return self.rew_buf # N,19
     
     def _get_obs_key_robot_contact(self,):
         return torch.any(torch.abs(self.simulator.contact_forces) > 0.1, dim=-1).float()[:,self.contact_Bodies_indices] # (Env, key_body_num)

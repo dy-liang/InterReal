@@ -9,7 +9,7 @@ import numpy as np
 
 class HighSAC(object):
     def __init__(self, device, num_envs):
-        num_inputs = 547
+        num_inputs = 192
         self.gamma = 0.99
         self.tau = 0.005
         self.action_range = [-1., 1.]

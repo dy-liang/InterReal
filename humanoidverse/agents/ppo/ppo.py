@@ -324,7 +324,7 @@ class PPO(BaseAlgo):
                     # ft_rewards_exp = torch.pow(rewards[:,:12], (rew_weights[:,:12] + 1.)).sum(-1) #(rewards * (rew_weights + 1.)).sum(-1)
                     # ft_rewards_mul = (rewards[:,12:] * (rew_weights[:,12:] + 1.)).sum(-1)
                     # ft_rewards = ft_rewards_exp + ft_rewards_mul
-                    ft_rewards = (rewards * (rew_weights + 1.)).sum(-1)
+                    ft_rewards = (rewards * (rew_weights + 1.)).sum(-1)#0-1-2
                 else: 
                     ft_rewards = rewards.sum(-1)
                 self.episode_env_tensors.add(infos["to_log"])

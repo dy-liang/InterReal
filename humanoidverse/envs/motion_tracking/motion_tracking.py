@@ -692,6 +692,15 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
     def _get_obs_vr_3point_pos(self):
         return self._obs_vr_3point_pos
 
+    def _get_obs_tracking_error(self,):
+        tar_pos_error = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1).unsqueeze(1)*100 #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+        tar_rot_error = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1).unsqueeze(1)*10 #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+        dif_joint_angles = (self.dif_joint_angles**2).mean(dim=-1).unsqueeze(1)*0.1
+        dif_global_body_pos = (self.dif_global_body_pos**2).mean(dim=-1).mean(dim=-1).unsqueeze(1)
+        dif_global_body_rot = (self.dif_global_body_rot**2).mean(dim=-1).mean(dim=-1).unsqueeze(1)
+        tracking_error = torch.cat((dif_global_body_pos,dif_global_body_rot,dif_joint_angles,tar_pos_error,tar_rot_error), dim=-1)
+        return tracking_error
+    
     ######################### Observations #########################
     def _get_obs_history_actor(self,):
         assert "history_actor" in self.config.obs.obs_auxiliary.keys()
