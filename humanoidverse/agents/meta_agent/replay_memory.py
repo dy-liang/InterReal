@@ -12,9 +12,9 @@ class ParallelReplayBuffer:
         self.states = np.zeros((self.capacity, state_dim), dtype=np.float32)
         self.actions = np.zeros((self.capacity, action_dim), dtype=np.float32)
         self.rewards = np.zeros((self.capacity, 1), dtype=np.float32)
-        self.next_states = np.zeros((self.capacity, state_dim), dtype=np.float32)
+        #self.next_states = np.zeros((self.capacity, state_dim), dtype=np.float32)
 
-    def push(self, states, actions, rewards, next_states):
+    def push(self, states, actions, rewards):
         assert states.shape == (self.num_envs, self.state_dim), f"预期维度({self.num_envs}, {self.state_dim})"
         idx = self.position
         if idx + self.num_envs > self.capacity: 
@@ -26,7 +26,7 @@ class ParallelReplayBuffer:
         self.states[idx:idx+delta_idx] = states.cpu().numpy()[:delta_idx]
         self.actions[idx:idx+delta_idx] = actions.cpu().numpy()[:delta_idx]
         self.rewards[idx:idx+delta_idx] = rewards.cpu().numpy().reshape(-1,1)[:delta_idx]
-        self.next_states[idx:idx+delta_idx] = next_states.cpu().numpy()[:delta_idx]
+        #self.next_states[idx:idx+delta_idx] = next_states.cpu().numpy()[:delta_idx]
         self.position = (self.position + self.num_envs) % self.capacity
 
     def sample(self, batch_size):
@@ -36,4 +36,4 @@ class ParallelReplayBuffer:
             idxs_next = np.where(idxs+1*self.num_envs>=self.position, idxs, idxs+1*self.num_envs)
         else:
             idxs_next = np.where(idxs+1*self.num_envs>=self.capacity, idxs, idxs+1*self.num_envs)
-        return self.states[idxs], self.actions[idxs], self.rewards[idxs_next], self.next_states[idxs_next]
+        return self.states[idxs], self.actions[idxs], self.rewards[idxs_next], self.states[idxs_next]
