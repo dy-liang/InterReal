@@ -26,7 +26,7 @@ class HighSAC(object):
 
         self.critic_target = QNetwork(num_inputs, self.action_nums, self.hidden_size).to(self.device)
         hard_update(self.critic_target, self.critic)
-        self.buffer = ParallelReplayBuffer(capacity=40960*2, state_dim=num_inputs, action_dim=self.action_nums, num_envs=num_envs)
+        self.buffer = ParallelReplayBuffer(capacity=40960*10, state_dim=num_inputs, action_dim=self.action_nums, num_envs=num_envs)
 
         if self.automatic_entropy_tuning is True:
             self.log_alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)

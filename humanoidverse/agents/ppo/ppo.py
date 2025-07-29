@@ -196,7 +196,7 @@ class PPO(BaseAlgo):
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
         T_start = 0
-        High_iter = 50
+        High_iter = 10
         # do not use track, because it will confict with motion loading bar
         # for it in track(range(self.current_learning_iteration, tot_iter), description="Learning Iterations"):
         for it in range(self.current_learning_iteration, tot_iter):
@@ -206,31 +206,39 @@ class PPO(BaseAlgo):
             # Otherwise, we will keep using the initial obs_dict for the whole training process
             #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
             if it % High_iter ==0:
-                cur_state = copy.deepcopy(obs_dict["sac_obs"]) # state featrue:(envs, N)
-                cur_error = copy.deepcopy(obs_dict["body_gt_error"])
+                obs_dict_tmp = copy.deepcopy(obs_dict) # state featrue:(envs, N)
 
                 #act_weights = self.high_agent.select_action(cur_state, evaluate=True) # apply reward weights (b,act_dims)
-                act_weights = self.high_agent.act(cur_state, sample=False) # apply reward weights (b,act_dims)
+                act_weights = self.high_agent.act(copy.deepcopy(obs_dict["sac_obs"]), sample=False) # apply reward weights (b,act_dims)
+                #print(it, obs_dict_tmp["sac_obs"][0,0],act_weights[0,0])
 
-                if it > 0:
-                    rewards = (old_error - cur_error) # time初始化
-                    self.high_agent.buffer.push(cur_state, act_weights, rewards)
-
-                old_error = cur_error
 
             # else:
             #     act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
             obs_dict =self._rollout_step(obs_dict, act_weights)
 
-            #if it % High_iter ==0:
-                #next_state = obs_dict["sac_obs"]
-                #result_cur = copy.deepcopy(obs_dict["body_gt_error"])
+            if it % High_iter ==0:
+                if it > 0:
+                    cur_state = copy.deepcopy(dict_tmp["sac_obs"]) # state featrue:(envs, N)
+                    cur_error = copy.deepcopy(dict_tmp["body_gt_error"])
 
+                    next_state = copy.deepcopy(obs_dict_tmp["sac_obs"]) # state featrue:(envs, N)
+                    next_error = copy.deepcopy(obs_dict_tmp["body_gt_error"])
 
+                    rewards = (cur_error - next_error) # time初始化
+                    #print(it, cur_state[0,0],cur_action[0,0],cur_error[0],rewards[0],next_state[0,0])
+                    self.high_agent.buffer.push(cur_state, cur_action, rewards, next_state)
 
+                dict_tmp = copy.deepcopy(obs_dict_tmp)
+                cur_action = act_weights
+# 0 tensor(0., device='cuda:0') tensor(0.1272, device='cuda:0')
+# 5 tensor(-0.2410, device='cuda:0') tensor(0.1620, device='cuda:0')
+# 5 tensor(0., device='cuda:0') tensor(0.1272, device='cuda:0') tensor(0.0086, device='cuda:0') tensor(-0.0696, device='cuda:0') tensor(-0.2410, device='cuda:0')
+# 10 tensor(0.3101, device='cuda:0') tensor(0.3028, device='cuda:0')
+# 10 tensor(-0.2410, device='cuda:0') tensor(0.1620, device='cuda:0') tensor(0.0782, device='cuda:0') tensor(-0.1488, device='cuda:0') tensor(0.3101, device='cuda:0')
             loss_dict = self._training_step()
-            if it > High_iter:
-                for _ in range(2):
+            if it >= High_iter:
+                for _ in range(4):
                     qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs//8, iter=it)
 
                 loss_dict['HSAC_q1'] = qf1_loss
