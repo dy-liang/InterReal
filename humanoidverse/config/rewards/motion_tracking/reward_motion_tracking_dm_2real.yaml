@@ -7,6 +7,7 @@ rewards:
   set_reward: dyliang
   set_reward_date: 20250525
   only_positive_rewards: False
+  meta_adaptive: True
   reward_scales:
       teleop_body_position_extend: 1.0
       teleop_vr_3point: 1.6

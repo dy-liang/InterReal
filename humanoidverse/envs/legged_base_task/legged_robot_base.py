@@ -144,7 +144,8 @@ class LeggedRobotBase(BaseTask):
         self.use_reward_penalty_curriculum = self.config.rewards.reward_penalty_curriculum
         if self.use_reward_penalty_curriculum:
             self.reward_penalty_scale = self.config.rewards.reward_initial_penalty_scale
-
+        else:
+            self.reward_penalty_scale = 0.5
         logger.info(colored(f"Use Reward Penalty: {self.use_reward_penalty_curriculum}", "green"))
         if self.use_reward_penalty_curriculum:
             logger.info(f"Penalty Reward Names: {self.config.rewards.reward_penalty_reward_names}")
@@ -508,6 +509,8 @@ class LeggedRobotBase(BaseTask):
             if name in self.config.rewards.reward_penalty_reward_names:
                 if self.config.rewards.reward_penalty_curriculum:
                     rew *= self.reward_penalty_scale
+                else:
+                    rew *=0.5
             #self.rew_buf += rew
             self.rew_buf[:,i] = rew
 

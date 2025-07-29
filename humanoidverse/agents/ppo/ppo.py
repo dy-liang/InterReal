@@ -196,7 +196,7 @@ class PPO(BaseAlgo):
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
         T_start = 0
-        High_iter = 10
+        High_iter = 50
         # do not use track, because it will confict with motion loading bar
         # for it in track(range(self.current_learning_iteration, tot_iter), description="Learning Iterations"):
         for it in range(self.current_learning_iteration, tot_iter):
@@ -204,20 +204,18 @@ class PPO(BaseAlgo):
 
             # Jiawei: Need to return obs_dict to update the obs_dict for the next iteration
             # Otherwise, we will keep using the initial obs_dict for the whole training process
-            #high_obs = torch.ones((self.num_envs, 345), requires_grad=False, device=self.device)
-            if it % High_iter ==0:
+            if it % High_iter==0 and self.env.config.rewards.meta_adaptive:
                 obs_dict_tmp = copy.deepcopy(obs_dict) # state featrue:(envs, N)
 
-                #act_weights = self.high_agent.select_action(cur_state, evaluate=True) # apply reward weights (b,act_dims)
                 act_weights = self.high_agent.act(copy.deepcopy(obs_dict["sac_obs"]), sample=False) # apply reward weights (b,act_dims)
-                #print(it, obs_dict_tmp["sac_obs"][0,0],act_weights[0,0])
 
 
-            # else:
-            #     act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
+            if not self.env.config.rewards.meta_adaptive:
+                act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
+
             obs_dict =self._rollout_step(obs_dict, act_weights)
 
-            if it % High_iter ==0:
+            if it % High_iter==0  and self.env.config.rewards.meta_adaptive:
                 if it > 0:
                     cur_state = copy.deepcopy(dict_tmp["sac_obs"]) # state featrue:(envs, N)
                     cur_error = copy.deepcopy(dict_tmp["body_gt_error"])
@@ -237,7 +235,7 @@ class PPO(BaseAlgo):
 # 10 tensor(0.3101, device='cuda:0') tensor(0.3028, device='cuda:0')
 # 10 tensor(-0.2410, device='cuda:0') tensor(0.1620, device='cuda:0') tensor(0.0782, device='cuda:0') tensor(-0.1488, device='cuda:0') tensor(0.3101, device='cuda:0')
             loss_dict = self._training_step()
-            if it >= High_iter:
+            if self.env.config.rewards.meta_adaptive and it >= High_iter:
                 for _ in range(4):
                     qf1_loss, qf2_loss, policy_loss, alpha = self.high_agent.update_parameters(self.high_agent.buffer, batch_size=self.num_envs//8, iter=it)
 
@@ -322,9 +320,13 @@ class PPO(BaseAlgo):
                 rewards, dones = rewards.to(self.device), dones.to(self.device)
 
                 # apply learning reward weights
-                ft_rewards_exp = torch.pow(rewards[:,:12], (rew_weights[:,:12] + 1.)).sum(-1) #(rewards * (rew_weights + 1.)).sum(-1)
-                ft_rewards_mul = (rewards[:,12:] * (rew_weights[:,12:] + 1.)).sum(-1)
-                ft_rewards = ft_rewards_exp + ft_rewards_mul
+                if self.env.config.rewards.meta_adaptive:
+                    # ft_rewards_exp = torch.pow(rewards[:,:12], (rew_weights[:,:12] + 1.)).sum(-1) #(rewards * (rew_weights + 1.)).sum(-1)
+                    # ft_rewards_mul = (rewards[:,12:] * (rew_weights[:,12:] + 1.)).sum(-1)
+                    # ft_rewards = ft_rewards_exp + ft_rewards_mul
+                    ft_rewards = (rewards * (rew_weights + 1.)).sum(-1)
+                else: 
+                    ft_rewards = rewards.sum(-1)
                 self.episode_env_tensors.add(infos["to_log"])
                 rewards_stored = ft_rewards.clone().unsqueeze(1)
                 if 'time_outs' in infos:
