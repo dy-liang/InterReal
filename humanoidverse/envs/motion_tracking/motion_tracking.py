@@ -166,7 +166,12 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.motion_ids = torch.arange(self.num_envs).to(self.device)
         self.motion_start_times = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device, requires_grad=False)
         self.motion_len = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device, requires_grad=False)
-        
+        self.tar_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device) #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+        self.tar_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device) #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+        self.dif_joint_angles_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_body_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.old_length = 0
     def _init_domain_rand_buffers(self):
         super()._init_domain_rand_buffers()
         self.ref_episodic_offset = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device, requires_grad=False)
@@ -230,12 +235,17 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.motion_len[env_ids] = self._motion_lib.get_motion_length(self.motion_ids[env_ids])
         if self.is_evaluating and not self.config.enforce_randomize_motion_start_eval:
             self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            self.tar_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device) #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+            self.tar_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device) #self.dif_global_body_rot*50, self.dif_global_body_ang_vel*50,
+            self.dif_joint_angles_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_body_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device)
             #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
             #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
-            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
     def resample_motion(self):
         self._motion_lib.load_motions(random_sample=True)
@@ -378,6 +388,19 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.dif_global_tar_pos = (self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3]).view(env_batch_size, -1, 3) # [num_envs,1, 3]
 
         self._log_motion_tracking_info()
+
+        #################### eval tracking error vis ############################
+        if self.is_evaluating:
+            print(self.episode_length_buf[0])
+            self.tar_pos_error[self.episode_length_buf[0]] = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1) 
+            self.tar_rot_error[self.episode_length_buf[0]] = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1) 
+            self.dif_joint_angles_error[self.episode_length_buf[0]] = (self.dif_joint_angles**2).mean(dim=-1)
+            self.dif_global_body_pos_error[self.episode_length_buf[0]] = (self.dif_global_body_pos**2).mean(dim=-1).mean(dim=-1)
+            self.dif_global_body_rot_error[self.episode_length_buf[0]] = (self.dif_global_body_rot**2).mean(dim=-1).mean(dim=-1)
+            if self.episode_length_buf[0]*self.dt >= self.motion_len[0]:
+                count = self.episode_length_buf[0]
+                print("epsodic mean error:", self.tar_pos_error.sum(0)/count,self.tar_rot_error.sum(0)/count,
+                    self.dif_joint_angles_error.sum(0)/count,self.dif_global_body_pos_error.sum(0)/count,self.dif_global_body_rot_error.sum(0)/count)
 
     def _compute_reward(self):
         super()._compute_reward()
@@ -781,7 +804,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         tar_position_dist = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1)
         t_pos = torch.exp(-tar_position_dist / self.config.rewards.reward_tracking_sigma.teleop_tar_pos)
         self._update_adaptive_sigma(tar_position_dist, 'teleop_tar_pos')
-        return t_pos, tar_position_dist
+        return t_pos, tar_position_dist*50.
     
     def _reward_teleop_tar_rot(self):
         tar_rotation_dist = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1)
@@ -815,7 +838,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         diff_joint_pos_dist = (joint_pos_diff**2).mean(dim=-1)
         r_joint_pos = torch.exp(-diff_joint_pos_dist / self.config.rewards.reward_tracking_sigma.teleop_joint_pos)
         self._update_adaptive_sigma(diff_joint_pos_dist, 'teleop_joint_pos')
-        return r_joint_pos, diff_joint_pos_dist
+        return r_joint_pos, diff_joint_pos_dist*0.1
     
     def _reward_teleop_joint_velocity(self):
         joint_vel_diff = self.dif_joint_velocities

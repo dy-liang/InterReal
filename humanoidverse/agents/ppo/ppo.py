@@ -209,11 +209,11 @@ class PPO(BaseAlgo):
 
                 act_weights = self.high_agent.act(copy.deepcopy(obs_dict["sac_obs"]), sample=False) # apply reward weights (b,act_dims)
 
-
+            factor = float(np.clip(1. - it/5000,0.1,1.0))
             if not self.env.config.rewards.meta_adaptive:
                 act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
 
-            obs_dict =self._rollout_step(obs_dict, act_weights)
+            obs_dict =self._rollout_step(obs_dict, act_weights * factor)
 
             if it % High_iter==0  and self.env.config.rewards.meta_adaptive:
                 if it > 0:
@@ -229,11 +229,7 @@ class PPO(BaseAlgo):
 
                 dict_tmp = copy.deepcopy(obs_dict_tmp)
                 cur_action = act_weights
-# 0 tensor(0., device='cuda:0') tensor(0.1272, device='cuda:0')
-# 5 tensor(-0.2410, device='cuda:0') tensor(0.1620, device='cuda:0')
-# 5 tensor(0., device='cuda:0') tensor(0.1272, device='cuda:0') tensor(0.0086, device='cuda:0') tensor(-0.0696, device='cuda:0') tensor(-0.2410, device='cuda:0')
-# 10 tensor(0.3101, device='cuda:0') tensor(0.3028, device='cuda:0')
-# 10 tensor(-0.2410, device='cuda:0') tensor(0.1620, device='cuda:0') tensor(0.0782, device='cuda:0') tensor(-0.1488, device='cuda:0') tensor(0.3101, device='cuda:0')
+
             loss_dict = self._training_step()
             if self.env.config.rewards.meta_adaptive and it >= High_iter:
                 for _ in range(4):
