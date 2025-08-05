@@ -171,6 +171,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.dif_joint_angles_error = torch.zeros(300, dtype=torch.float32, device=self.device)
         self.dif_global_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
         self.dif_global_body_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.eig_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.tar_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_joint_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_upper_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_lower_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_3point_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+        self.dif_global_body_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
         self.old_length = 0
     def _init_domain_rand_buffers(self):
         super()._init_domain_rand_buffers()
@@ -240,6 +247,13 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.dif_joint_angles_error = torch.zeros(300, dtype=torch.float32, device=self.device)
             self.dif_global_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
             self.dif_global_body_rot_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.eig_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.tar_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_joint_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_upper_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_lower_body_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_3point_pos_error = torch.zeros(300, dtype=torch.float32, device=self.device)
+            self.dif_global_body_vel_error = torch.zeros(300, dtype=torch.float32, device=self.device)
             #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
@@ -389,18 +403,49 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         self._log_motion_tracking_info()
 
-        #################### eval tracking error vis ############################
+        #################### print eval tracking error ############################
         if self.is_evaluating:
             print(self.episode_length_buf[0])
-            self.tar_pos_error[self.episode_length_buf[0]] = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1) 
-            self.tar_rot_error[self.episode_length_buf[0]] = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1) 
-            self.dif_joint_angles_error[self.episode_length_buf[0]] = (self.dif_joint_angles**2).mean(dim=-1)
-            self.dif_global_body_pos_error[self.episode_length_buf[0]] = (self.dif_global_body_pos**2).mean(dim=-1).mean(dim=-1)
-            self.dif_global_body_rot_error[self.episode_length_buf[0]] = (self.dif_global_body_rot**2).mean(dim=-1).mean(dim=-1)
+
+            object_points = self.simulator.object_points[self.simulator.object_id[self.data_id]]
+            obj_rot_extend = self.simulator.tar_root_states[:, 3:7].unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+            object_points_extend = object_points.view(-1, 3)
+            obj_points = torch_utils.quat_rotate(obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.simulator.tar_root_states[:, :3].unsqueeze(1)
+            
+            ref_obj_rot_extend = self.ref_tar_root_rot.unsqueeze(1).repeat(1, object_points.shape[1], 1).view(-1, 4)
+            ref_obj_points = torch_utils.quat_rotate(ref_obj_rot_extend, object_points_extend).view(self.num_envs, object_points.shape[1], 3) + self.ref_tar_root_pos.unsqueeze(1)
+
+            len_keypos = len(self.key_Bodies_indices)
+            ig = self.simulator._rigid_body_pos[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - obj_points.unsqueeze(1)
+            ref_ig = self.ref_body_pos_extend[:,self.key_Bodies_indices].view(-1,len_keypos,3).unsqueeze(2) - ref_obj_points.unsqueeze(1)
+            ### interaction graph reward ###
+            weight_1 = (1 / torch.clamp((ig**2).sum(dim=-1), min=0.01))
+            weight_1 = weight_1 / weight_1.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
+            weight_2 = (1 / torch.clamp((ref_ig**2).sum(dim=-1), min=0.01))
+            weight_2 = weight_2 / weight_2.sum(dim=-1, keepdim=True).sum(dim=-2, keepdim=True)
+
+            eig = ((ig - ref_ig)**2).sum(dim=-1) * (weight_1 + weight_2)  
+            self.eig_error[self.episode_length_buf[0]] = eig.mean(dim=-1).mean(dim=-1).mean()
+
+            self.tar_pos_error[self.episode_length_buf[0]] = ((self.ref_tar_root_pos - self.simulator.tar_root_states[:, :3])**2).mean(dim=-1).mean() 
+            self.tar_vel_error[self.episode_length_buf[0]] = ((self.ref_tar_root_vel - self.simulator.tar_root_states[:, 7:10])**2).mean(dim=-1).mean() 
+            self.tar_rot_error[self.episode_length_buf[0]] = ((self.ref_tar_root_rot - self.simulator.tar_root_states[:, 3:7])**2).mean(dim=-1).mean() 
+            self.dif_joint_angles_error[self.episode_length_buf[0]] = (self.dif_joint_angles**2).mean(dim=-1).mean()
+            self.dif_joint_vel_error[self.episode_length_buf[0]] = (self.dif_joint_velocities**2).mean(dim=-1).mean()
+            self.dif_global_upper_body_pos_error[self.episode_length_buf[0]] = (self.dif_global_body_pos[:, self.upper_body_id, :]**2).mean(dim=-1).mean(dim=-1).mean()
+            self.dif_global_lower_body_pos_error[self.episode_length_buf[0]] = (self.dif_global_body_pos[:, self.lower_body_id, :]**2).mean(dim=-1).mean(dim=-1).mean()
+            self.dif_global_3point_pos_error[self.episode_length_buf[0]] = (self.dif_global_body_pos[:, self.motion_tracking_id, :]**2).mean(dim=-1).mean(dim=-1).mean()
+            self.dif_global_body_vel_error[self.episode_length_buf[0]] = (self.dif_global_body_vel**2).mean(dim=-1).mean(dim=-1).mean()
+
+            self.dif_global_body_rot_error[self.episode_length_buf[0]] = (self.dif_global_body_rot**2).mean(dim=-1).mean(dim=-1).mean()
+
             if self.episode_length_buf[0]*self.dt >= self.motion_len[0]:
                 count = self.episode_length_buf[0]
-                print("epsodic mean error:", self.tar_pos_error.sum(0)/count,self.tar_rot_error.sum(0)/count,
-                    self.dif_joint_angles_error.sum(0)/count,self.dif_global_body_pos_error.sum(0)/count,self.dif_global_body_rot_error.sum(0)/count)
+                print("eig_error:",self.eig_error.sum(0)/count,"tar_pos:", self.tar_pos_error.sum(0)/count,"tar_vel:", self.tar_vel_error.sum(0)/count,
+                      "tar_rot:",self.tar_rot_error.sum(0)/count,
+                    "dof_pos:", self.dif_joint_angles_error.sum(0)/count,"dof_vel:", self.dif_joint_vel_error.sum(0)/count,"upper_body:", self.dif_global_upper_body_pos_error.sum(0)/count,
+                    "lower_pos:", self.dif_global_lower_body_pos_error.sum(0)/count,"3point:", self.dif_global_3point_pos_error.sum(0)/count,
+                    "body_vel:", self.dif_global_body_vel_error.sum(0)/count,"body_rot:", self.dif_global_body_rot_error.sum(0)/count)
 
     def _compute_reward(self):
         super()._compute_reward()

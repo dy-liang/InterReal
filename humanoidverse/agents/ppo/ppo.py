@@ -76,7 +76,7 @@ class PPO(BaseAlgo):
         self.save_interval = self.config.save_interval
         self.save_jit_model = self.config.save_jit_model
         self.save_model = self.config.save_model
-
+        self.save_meta_model = self.config.save_meta_model
         # Training related Config
         self.num_steps_per_env = self.config.num_steps_per_env
         self.load_optimizer = self.config.load_optimizer
@@ -146,8 +146,10 @@ class PPO(BaseAlgo):
         self.actor.train()
         self.critic.train()
 
-    def load(self, ckpt_path):
+    def load(self, ckpt_path, meta_ckpt_path):
         # import ipdb; ipdb.set_trace()
+        if meta_ckpt_path is not None:
+            self.high_agent.load_checkpoint(meta_ckpt_path)
         if ckpt_path is not None:
             logger.info(f"Loading checkpoint from {ckpt_path}")
             loaded_dict = torch.load(ckpt_path, map_location=self.device)
@@ -165,7 +167,7 @@ class PPO(BaseAlgo):
             self.current_learning_iteration = loaded_dict["iter"]
             return loaded_dict["infos"]
 
-    def save(self, path, path_jit, infos=None):
+    def save(self, path, path_meta, infos=None):
         if self.save_model:
             logger.info(f"Saving checkpoint to {path}")
             torch.save({
@@ -177,10 +179,23 @@ class PPO(BaseAlgo):
                 'infos': infos,
             }, path)
         if self.save_jit_model:
-            logger.info(f'Saving jit policy to {path_jit}')
+            logger.info(f'Saving jit policy to {path_meta}')
             model = copy.deepcopy(self.actor.actor).to('cpu')
             traced_script_module = torch.jit.script(model)
-            traced_script_module.save(path_jit)
+            traced_script_module.save(path_meta)
+
+        if self.save_meta_model:
+            logger.info(f"Saving checkpoint to {path_meta}")
+            torch.save({
+                'policy_state_dict': self.high_agent.actor.state_dict(),
+                'critic_state_dict': self.high_agent.critic.state_dict(),
+                'critic_target_state_dict': self.high_agent.critic_target.state_dict(),
+                'actor_optimizer_state_dict': self.high_agent.policy_optim.state_dict(),
+                'critic_optimizer_state_dict': self.high_agent.critic_optim.state_dict(),
+                'alpha_optimizer_state_dict': self.high_agent.alpha_optim.state_dict(),
+                'iter': self.current_learning_iteration,
+                'infos': infos,
+            }, path_meta)
         
     def learn(self):
         if self.init_at_random_ep_len:
@@ -211,7 +226,7 @@ class PPO(BaseAlgo):
 
             factor = float(np.clip(1. - it/5000,0.1,1.0))
             if not self.env.config.rewards.meta_adaptive:
-                act_weights = torch.zeros((self.num_envs, 19), device=self.device, dtype=torch.float)
+                act_weights = torch.zeros((self.num_envs, len(self.env.config.rewards.reward_scales.keys())), device=self.device, dtype=torch.float)
 
             obs_dict =self._rollout_step(obs_dict, act_weights * factor)
 
@@ -224,7 +239,7 @@ class PPO(BaseAlgo):
                     next_error = copy.deepcopy(obs_dict_tmp["body_gt_error"])
 
                     rewards = (cur_error - next_error) # time初始化
-                    #print(it, cur_state[0,0],cur_action[0,0],cur_error[0],rewards[0],next_state[0,0])
+
                     self.high_agent.buffer.push(cur_state, cur_action, rewards, next_state)
 
                 dict_tmp = copy.deepcopy(obs_dict_tmp)
@@ -259,7 +274,7 @@ class PPO(BaseAlgo):
             }
             self._post_epoch_logging(log_dict)
             if it % self.save_interval == 0:
-                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)),os.path.join(self.log_dir, 'jit_model_{}.pt'.format(it)))
+                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)),os.path.join(self.log_dir, 'meta_model_{}.pt'.format(it)))
             self.ep_infos.clear()
         
         self.current_learning_iteration += num_learning_iterations
@@ -648,9 +663,11 @@ class PPO(BaseAlgo):
     def get_example_obs(self):
         obs_dict = self.env.reset_all()
         for obs_key in obs_dict.keys():
+            if obs_key in ["body_gt_error"]: continue
             print(obs_key, sorted(self.env.config.obs.obs_dict[obs_key]))
         # move to cpu
         for k in obs_dict:
+            if k in ["body_gt_error"]: continue
             obs_dict[k] = obs_dict[k].cpu()
         return obs_dict
 
@@ -669,6 +686,8 @@ class PPO(BaseAlgo):
             actor_state["step"] = step
             actor_state = self._pre_eval_env_step(actor_state)
             actor_state = self.env_step(actor_state)
+            weight_list =  self.high_agent.act(actor_state["obs"]['sac_obs'], sample=False)
+            #print(weight_list)
             actor_state = self._post_eval_env_step(actor_state)
             step += 1
         self._post_evaluate_policy()
