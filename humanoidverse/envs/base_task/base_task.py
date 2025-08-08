@@ -200,12 +200,18 @@ class BaseTask():
         self.contact_Bodies = self.config.robot.contact_Bodies #[s for s in self.body_names if self.config.robot.contact_Bodies in s]
         self.key_Bodies = self.config.robot.key_Bodies
         self.hand_name = self.config.robot.hand_name
-        self.ik_hand_dof_names = ['left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint', 'left_wrist_roll_joint',
-            'left_wrist_pitch_joint','left_wrist_yaw_joint','right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint', 'right_wrist_roll_joint',
-            'right_wrist_pitch_joint','right_wrist_yaw_joint'
-        ]
-        self.ik_hand_body_names = ['left_shoulder_pitch_link','left_wrist_yaw_link','right_shoulder_pitch_link','right_wrist_yaw_link']
 
+        if self.config.robot.motion.humanoid_type == "g1_29dof_with_hand":
+            self.ik_hand_dof_names = ['left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint', 'left_wrist_roll_joint',
+                'left_wrist_pitch_joint','left_wrist_yaw_joint','right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint', 'right_wrist_roll_joint',
+                'right_wrist_pitch_joint','right_wrist_yaw_joint'
+            ]
+            self.ik_hand_body_names = ['left_shoulder_pitch_link','left_wrist_yaw_link','right_shoulder_pitch_link','right_wrist_yaw_link']
+        else:
+            self.ik_hand_dof_names = ['left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint', 
+                                      'right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint'
+            ]
+            self.ik_hand_body_names = ['left_shoulder_pitch_link','left_wrist_yaw_link','right_shoulder_pitch_link','right_wrist_yaw_link']
         self.hand_indices = torch.zeros(len(self.hand_name), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(self.hand_name)):
             self.hand_indices[i] = self.simulator.find_rigid_body_indice(self.hand_name[i])

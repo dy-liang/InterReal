@@ -1,18 +1,21 @@
-export CUDA_VISIBLE_DEVICES=0
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export HYDRA_FULL_ERROR=1
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/root/miniconda3/envs/hvgym1/lib/
+export CUDA_VISIBLE_DEVICES=2
 python humanoidverse/train_agent.py \
 +simulator=isaacgym \
 +exp=motion_tracking \
-+domain_rand=NO_domain_rand \
++domain_rand=domain_rand_hois \
 +rewards=motion_tracking/reward_motion_tracking_dm_2real_23dof \
 +robot=g1/g1_29dof_anneal_23dof \
 +terrain=terrain_locomotion_plane \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history_23dof \
-num_envs=4096 \
+num_envs=1 \
 project_name=MotionTracking \
 experiment_name=Start_MultiTask_OriginEP_23Dof_TrackID_bigPD_TrackElbowShoulder \
-robot.motion.motion_file="humanoidverse/data/motions/g1_23dof/250523_HOIs_4task_4000_23dof.pkl" \
+robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/motion_largebox_0d12_5x5_dr_v3.pkl" \
 rewards.reward_penalty_curriculum=True \
+rewards.adaptive_tracking_sigma.enable=True \
+rewards.meta_adaptive=True \
 rewards.reward_penalty_degree=0.00001 \
 env.config.resample_motion_when_training=False \
 env.config.termination.terminate_when_motion_far=True \

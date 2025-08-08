@@ -40,6 +40,10 @@
     <mesh name="right_rubber_hand" file="right_rubber_hand.STL"/>
   </asset>
 
+  <default>
+    <joint damping="0.001" armature="0.01" frictionloss="0.1"/>
+  </default>
+  
   <worldbody>
     <body name="pelvis" pos="0 0 0.793">
       <inertial pos="0 0 -0.07605" quat="1 0 -0.000399148 0" mass="3.813" diaginertia="0.010549 0.0093089 0.0079184"/>

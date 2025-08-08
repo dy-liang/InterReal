@@ -8,8 +8,8 @@ from humanoidverse.agents.meta_agent.replay_memory import ParallelReplayBuffer
 import numpy as np
 
 class HighSAC(object):
-    def __init__(self, device, num_envs):
-        num_inputs = 192
+    def __init__(self, device, num_envs, dim_dict):
+        num_inputs = dim_dict["sac_obs"]
         self.gamma = 0.99
         self.tau = 0.005
         self.action_range = [-1., 1.]

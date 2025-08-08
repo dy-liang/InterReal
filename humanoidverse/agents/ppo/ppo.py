@@ -61,7 +61,7 @@ class PPO(BaseAlgo):
         _ = self.env.reset_all()
 
     def _init_high_policy(self, device):
-        self.high_agent = HighSAC(device, self.num_envs)
+        self.high_agent = HighSAC(device, self.num_envs, self.env.config.robot.algo_obs_dim_dict)
 
     def _init_config(self):
         # Env related Config

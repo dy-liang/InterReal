@@ -43,7 +43,16 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self._init_adaptive_sigma()
         self.init_done = True
         self.debug_viz = True
-
+        self.open_dof_indices = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42] # 20
+        self.hand_indices = [22, 23, 24, 25, 26, 27, 28,  36, 37, 38, 39, 40, 41, 42] #14
+        print("len(self.dof_names)", len(self.dof_names))
+        self.indices_29dof_in43dof = [i for i in range(len(self.dof_names)) if i not in self.hand_indices] #29
+        if self.config.robot.motion.humanoid_type == "g1_29dof_with_hand":
+            self.indices_used_in43dof = [i for i in range(len(self.dof_names))] 
+            self.indices_used_in47body = [i for i in range(len(self.body_names)+3)] 
+        else:
+            self.indices_used_in43dof = [i for i in range(43) if i not in self.open_dof_indices] #23
+            self.indices_used_in47body = [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 30, 31, 32, 33, 44,45,46]
         self._init_save_motion()
 
         if self.config.use_teleop_control:
@@ -258,8 +267,8 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
         else:
             #self.motion_start_times[env_ids] = torch.tensor([1.0]).to(self.device)#self._motion_lib.sample_time(self.motion_ids[env_ids])
-            #self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
-            self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
+            self.motion_start_times[env_ids] = self._motion_lib.sample_time(self.motion_ids[env_ids])
+            #self.motion_start_times[env_ids] = torch.zeros(len(env_ids), dtype=torch.float32, device=self.device)
 
     def resample_motion(self):
         self._motion_lib.load_motions(random_sample=True)
@@ -279,15 +288,16 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         ## current robot reference data ##
         motion_res = self._motion_lib.get_motion_state(self.motion_ids, motion_times, offset=offset)
-        ref_body_pos_extend = motion_res["rg_pos_t"]
+        ref_body_pos_extend = motion_res["rg_pos_t"][:, self.indices_used_in47body]
+        print(ref_body_pos_extend[0,-3:])
         self.ref_body_pos_extend[:] = ref_body_pos_extend # for visualization and analysis
-        ref_body_vel_extend = motion_res["body_vel_t"] # [num_envs, num_markers, 3]
-        ref_body_rot_extend = motion_res["rg_rot_t"] # [num_envs, num_markers, 4]
+        ref_body_vel_extend = motion_res["body_vel_t"][:, self.indices_used_in47body] # [num_envs, num_markers, 3]
+        ref_body_rot_extend = motion_res["rg_rot_t"][:, self.indices_used_in47body] # [num_envs, num_markers, 4]
         self.ref_body_rot_extend[:] = ref_body_rot_extend # for visualization and analysis
 
-        ref_body_ang_vel_extend = motion_res["body_ang_vel_t"] # [num_envs, num_markers, 3]
-        ref_joint_pos = motion_res["dof"] # [num_envs, num_dofs]
-        ref_joint_vel = motion_res["dof_vel"] # [num_envs, num_dofs]
+        ref_body_ang_vel_extend = motion_res["body_ang_vel_t"][:, self.indices_used_in47body] # [num_envs, num_markers, 3]
+        ref_joint_pos = motion_res["dof"][:, self.indices_used_in43dof] # [num_envs, num_dofs]
+        ref_joint_vel = motion_res["dof_vel"][:, self.indices_used_in43dof] # [num_envs, num_dofs]
         self.ref_robot_root_pos = motion_res['root_pos']
         self.ref_robot_root_rot = motion_res['root_rot']
         self.ref_robot_root_vel = motion_res['root_vel']
@@ -522,10 +532,10 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
 
         dof_pos_noise = self.config.init_noise_scale.dof_pos * self.config.noise_to_initial_level
         dof_vel_noise = self.config.init_noise_scale.dof_vel * self.config.noise_to_initial_level
-        dof_pos = motion_res['dof'][env_ids]
-        dof_vel = motion_res['dof_vel'][env_ids]
-        self.simulator.dof_pos[env_ids] = dof_pos + torch.randn_like(dof_pos) * dof_pos_noise
-        self.simulator.dof_vel[env_ids] = dof_vel + torch.randn_like(dof_vel) * dof_vel_noise
+        dof_pos = motion_res['dof'][env_ids][:,self.indices_used_in43dof]
+        dof_vel = motion_res['dof_vel'][env_ids][:,self.indices_used_in43dof]
+        self.simulator.dof_pos[env_ids] = dof_pos #+ torch.randn_like(dof_pos) * dof_pos_noise
+        self.simulator.dof_vel[env_ids] = dof_vel #+ torch.randn_like(dof_vel) * dof_vel_noise
         #print("motion dof pos:", motion_res['dof'][:,self.ik_hand_dof_indices].cpu().numpy())
 
         if self.add_inter_dr: self.interation_dr(env_ids, motion_res)

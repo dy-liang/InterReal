@@ -15,7 +15,7 @@ domain_rand:
 
   # link mass
   randomize_link_mass : True
-  link_mass_range : [0.95, 1.05] # *factor 0.8,1.2
+  link_mass_range : [0.8, 1.2] # *factor 0.8,1.2
   randomize_link_body_names : [
       'pelvis', 'left_hip_yaw_link', 'left_hip_roll_link', 'left_hip_pitch_link', 'left_knee_link', #'left_shoulder_pitch_link','left_wrist_roll_link','left_elbow_link',
       'right_hip_yaw_link', 'right_hip_roll_link', 'right_hip_pitch_link', 'right_knee_link' #,'right_shoulder_pitch_link','right_wrist_roll_link','right_elbow_link'
@@ -23,12 +23,12 @@ domain_rand:
 
   # obj mass
   randomize_obj_mass : True
-  obj_mass_range : [0.9, 1.1]
+  obj_mass_range : [0.7, 1.2]
 
   # pd gain
   randomize_pd_gain : True
-  kp_range : [0.9, 1.1]
-  kd_range : [0.9, 1.1]
+  kp_range : [0.7, 1.2]
+  kd_range : [0.7, 1.2]
 
   # friction
   randomize_friction : True
@@ -49,5 +49,5 @@ domain_rand:
 
 
   # control delay
-  randomize_ctrl_delay : False
+  randomize_ctrl_delay : True
   ctrl_delay_step_range : [0, 2] # integer max real delay is 90ms

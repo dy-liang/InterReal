@@ -29,6 +29,8 @@ robot:
 
   key_bodies: ["left_ankle_roll_link", "right_ankle_roll_link"]
   key_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link',               'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
+  #key_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'right_shoulder_yaw_link', 'right_elbow_link']
+
   contact_bodies: [ "left_ankle_roll_link", "right_ankle_roll_link" ]
   contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_wrist_yaw_link', 'left_hand_index_1_link', 'left_hand_middle_1_link', 'left_hand_thumb_2_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_wrist_yaw_link', 'right_hand_index_1_link', 'right_hand_middle_1_link', 'right_hand_thumb_2_link']
   left_hand_name: ["left_wrist_yaw_link", "left_hand_index_1_link", "left_hand_middle_1_link", "left_hand_thumb_2_link"]
@@ -262,6 +264,7 @@ robot:
       assetRoot: "humanoidverse/data/robots/g1/"
       # assetFileName: "g1_29dof_anneal_23dof.xml"
       assetFileName: "g1_29dof_with_hand.xml"
+      assetFileName_43dof: "g1_29dof_with_hand.xml"
       urdfFileName: "g1_29dof_with_hand.urdf"
 
     humanoid_type: g1_29dof_with_hand

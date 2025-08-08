@@ -912,11 +912,13 @@ class LeggedRobotBase(BaseTask):
     def _get_obs_dof_pos(self,):
         dof_pos = self.simulator.dof_pos - self.default_dof_pos
         if self.config.robot.with_open_obs: return dof_pos
-        else: return dof_pos[:,self.ppo_action_indices]
+        if self.config.robot.hybrid_control_mode: return dof_pos[:,self.ppo_action_indices]
+        else: return dof_pos
     
     def _get_obs_dof_vel(self,):
         if self.config.robot.with_open_obs: return self.simulator.dof_vel
-        else: return self.simulator.dof_vel[:,self.ppo_action_indices]
+        if self.config.robot.hybrid_control_mode: return self.simulator.dof_vel[:,self.ppo_action_indices]
+        else: return self.simulator.dof_vel
 
     def _get_obs_local_tar_pos(self,):
         return self._obs_local_tar_pos

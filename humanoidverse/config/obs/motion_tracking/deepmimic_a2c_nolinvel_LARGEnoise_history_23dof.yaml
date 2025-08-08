@@ -9,8 +9,9 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      local_tar_pos,
-      tar_rot,
+      global_tar_pos,
+      #global_tar_vel,
+      #tar_rot,
       #key_robot_contact,
       #ig,
       ref_motion_phase,
@@ -27,7 +28,8 @@ obs:
       dof_pos,
       dof_vel,
       actions,
-      local_tar_pos,
+      global_tar_pos,
+      global_tar_vel,
       tar_rot,
       key_robot_contact,
       ig,
@@ -37,33 +39,43 @@ obs:
       history_critic
     ]
 
+    sac_obs: [
+      actions,
+      global_tar_pos,
+      ref_motion_phase,
+      dif_local_rigid_body_pos,
+      tracking_error,
+      reward
+    ]
   obs_auxiliary: # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
 
     history_actor: {
-      base_ang_vel: 1,
-      projected_gravity: 1,
-      dof_pos: 1,
-      dof_vel: 1,
-      actions: 1,
-      local_tar_pos: 1,
-      tar_rot: 1,
-      #ig: 1,
-      #key_robot_contact: 1,
-      ref_motion_phase: 1
+      base_ang_vel: 3,
+      projected_gravity: 3,
+      dof_pos: 3,
+      dof_vel: 3,
+      actions: 3,
+      #global_tar_pos: 3,
+      #global_tar_vel: 3,
+      #tar_rot: 3,
+      #ig: 3,
+      #key_robot_contact: 3,
+      #ref_motion_phase: 3
     }
 
     history_critic: {
-      base_lin_vel: 1,
-      base_ang_vel: 1,
-      projected_gravity: 1,
-      dof_pos: 1,
-      dof_vel: 1,
-      actions: 1,
-      local_tar_pos: 1,
-      tar_rot: 1,
+      base_lin_vel: 3,
+      base_ang_vel: 3,
+      projected_gravity: 3,
+      dof_pos: 3,
+      dof_vel: 3,
+      actions: 3,
+      global_tar_pos: 3,
+      global_tar_vel: 3,
+      tar_rot: 3,
       key_robot_contact: 1,
       ig: 1,
-      ref_motion_phase: 1
+      #ref_motion_phase: 3
     }
 
   obs_scales: {
@@ -72,9 +84,14 @@ obs:
     projected_gravity: 1.0,
     dof_pos: 1.0,
     dof_vel: 0.05,
+    full_dof_pos: 1.0,
+    full_dof_vel: 0.05,
     actions: 1.0,
-    local_tar_pos: 1,
-    tar_rot: 1,
+    local_tar_pos: 1.0,
+    global_tar_pos: 1.0,
+    tar_rot: 1.0,
+    local_tar_vel: 1.0, # 1.0 0.05
+    global_tar_vel: 1.0,
     key_robot_contact: 1,
     ig: 1,
     dif_local_rigid_body_pos: 1.0,
@@ -82,6 +99,8 @@ obs:
     ref_motion_phase: 1.0,
     history_actor: 1.0,
     history_critic: 1.0,
+    tracking_error: 1.0,
+    reward: 1.0
   }
 
   noise_scales: {
@@ -90,9 +109,14 @@ obs:
     projected_gravity: 0.2,
     dof_pos: 0.01,
     dof_vel: 1.0,
+    full_dof_pos: 0.01,
+    full_dof_vel: 1.0,
     actions: 0.0,
-    local_tar_pos: 0.0,
-    tar_rot: 0.0,
+    local_tar_pos: 0.1, #0.0, 0.01 add noise
+    global_tar_pos: 0.1, #0.0, 0.01 add noise
+    tar_rot: 0.1,       #0.0, 0.01 add noise
+    local_tar_vel: 1.0, #0.0, add noise 
+    global_tar_vel: 1.0, #0.0, add noise 
     key_robot_contact: 0.0,
     ig: 0.0,
     dif_local_rigid_body_pos: 0.0,
@@ -100,6 +124,8 @@ obs:
     ref_motion_phase: 0.0,
     history_actor: 0.0,
     history_critic: 0.0,
+    tracking_error: 0.0,
+    reward: 0.0
   }
 
   add_noise_currculum: False
@@ -116,13 +142,20 @@ obs:
     - projected_gravity: 3
     - dof_pos: ${robot.dof_obs_size}
     - dof_vel: ${robot.dof_obs_size}
+    - full_dof_pos: ${robot.dof_obs_size}
+    - full_dof_vel: ${robot.dof_obs_size}
     - actions: ${robot.dof_obs_size}
     - local_tar_pos: 3
+    - global_tar_pos: 3
+    - local_tar_vel: 3
+    - global_tar_vel: 3
     - tar_rot: 4
     - key_robot_contact: 11
     - ig: 105
-    - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'} # hardcoded for 3 extended body
-    - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 9'}
+    - dif_local_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'} # hardcoded for 3 extended body
+    - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
     - ref_motion_phase: ${robot.motion_num}
+    - tracking_error: 5
+    - reward: 19
 
   post_compute_config: {} # Will store values after preprocessing, don't put anything here

@@ -4,6 +4,7 @@ defaults:
   - robot_base
 
 robot:
+  with_open_obs: False
   hybrid_control_mode: False
   hybrid_control:  
     control_mode: "EFFORT_MODE" #POS_MODE
@@ -15,7 +16,7 @@ robot:
   num_bodies: 24
   dof_obs_size: 23
   actions_dim: 23
-  motion_num: 4
+  motion_num: 1
   lower_body_actions_dim: 15 # Yuanhang
   upper_body_actions_dim: 8 # Yuanhang
   policy_obs_dim: -1 # Jiawei
@@ -32,6 +33,8 @@ robot:
   contact_Bodies: ['left_hip_yaw_link', 'left_knee_link', 'left_ankle_roll_link', 'right_hip_yaw_link', 'right_knee_link', 'right_ankle_roll_link', 'torso_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'right_shoulder_yaw_link', 'right_elbow_link']
   left_hand_name: ["left_wrist_yaw_link"]
   right_hand_name: ["right_wrist_yaw_link"]
+  hand_name: ["left_wrist_yaw_link", "right_wrist_yaw_link"]
+
   num_feet: 2
   right_foot_name: "right_ankle_roll_link"
   left_foot_name: "left_ankle_roll_link"
@@ -203,6 +206,7 @@ robot:
       assetRoot: "humanoidverse/data/robots/g1/"
       # assetFileName: "g1_29dof_anneal_23dof.xml"
       assetFileName: "g1_29dof_anneal_23dof_fitmotionONLY.xml"
+      assetFileName_43dof: "g1_29dof_with_hand.xml"
       urdfFileName: "g1_29dof_anneal_23dof.urdf"
 
     humanoid_type: g1_29dof_anneal_23dof
@@ -272,10 +276,10 @@ robot:
     motion_tracking_link:
       - "left_hand_link"
       - "right_hand_link"
-      - "left_elbow_link"
-      - "right_elbow_link"
-      - "left_shoulder_yaw_link"
-      - "right_shoulder_yaw_link"
+      # - "left_elbow_link"
+      # - "right_elbow_link"
+      # - "left_shoulder_yaw_link"
+      # - "right_shoulder_yaw_link"
       - "head_link"
 
     lower_body_link:
