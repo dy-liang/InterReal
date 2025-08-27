@@ -38,5 +38,5 @@ for i in range(19):
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # 调整主标题位置
 
 # 5. 保存并显示图像
-plt.savefig('./19_features_plot.png', dpi=300, bbox_inches='tight')
+plt.savefig('./19_features_plot_bigM2.png', dpi=300, bbox_inches='tight')
 plt.show()

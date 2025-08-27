@@ -1,11 +1,11 @@
-seed: 0
+seed: 2
 codebase_version: 1.0
 headless: true
 num_envs: 4096
 auto_load_latest: false
 checkpoint: null
 project_name: MotionTracking
-experiment_name: Start_43Dof_MultiTask_OpenHand_PDv4_interDR_50x5_Pos_Mov3_AutoR_A_W_nextSR_newSAC_iter50_TTT_scale_ZSI_decay_bigM_allBody
+experiment_name: Start_43Dof_MultiTask_OpenHand_PDv4_interDR_50x5_Pos_Mov3_AutoR_A_W_nextSR_newSAC_iter50_TTF_scale_ZSI_decay_bigM_allBody_TTT_s2
 base_dir: logs
 timestamp: ${now:%Y%m%d_%H%M%S}
 experiment_dir: ${base_dir}/${project_name}/${timestamp}-${experiment_name}-${log_task_name}-${robot.asset.robot_type}

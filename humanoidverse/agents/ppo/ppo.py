@@ -684,16 +684,23 @@ class PPO(BaseAlgo):
         init_actions = torch.zeros(self.env.num_envs, self.num_act, device=self.device)
         actor_state.update({"obs": obs_dict, "actions": init_actions})
         actor_state = self._pre_eval_env_step(actor_state)
+        w = []
         while True:
             actor_state["step"] = step
             actor_state = self._pre_eval_env_step(actor_state)
             actor_state = self.env_step(actor_state)
             weight_list =  self.high_agent.act(actor_state["obs"]['sac_obs'], sample=False)
+            weight_list = list(weight_list.mean(0).cpu().numpy())
+            w.append(weight_list)
             #print(weight_list)
             actor_state = self._post_eval_env_step(actor_state)
             step += 1
-        self._post_evaluate_policy()
-
+            if step > 270:
+                weight_np = np.array(w)
+                #save_path = os.path.join(self.log_dir, 'weight.npy')
+                np.save('./weight.npy',weight_np)
+                break
+            
     def _create_actor_state(self):
         return {"done_indices": [], "stop": False}
 

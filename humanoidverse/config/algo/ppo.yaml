@@ -19,7 +19,7 @@ algo:
     desired_kl: 0.01
 
     num_steps_per_env: 24
-    save_interval: 500
+    save_interval: 1000
     save_jit_model: False
     save_model: True
     save_meta_model: True
