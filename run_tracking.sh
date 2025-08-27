@@ -11,10 +11,10 @@ python humanoidverse/train_agent.py \
 +robot=g1/g1_29dof_with_hand \
 +terrain=terrain_locomotion_plane \
 +obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history \
-num_envs=4096 \
+num_envs=1 \
 seed=1 \
 project_name=MotionTracking \
-experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_interDR_50x5_Pos_Mov3_AutoR_A_W_nextSR_newSAC_iter50_TTF_scale_ZSI_decay_bigM_allBody_TTT_s1 \
+experiment_name=Start_43Dof_MultiTask_OpenHand_PDv4_interDR_50x5_Pos_Mov3_AutoR_A_W_nextSR_newSAC_iter50_TTF_scale_ZSI_decay_bigM_allBody_TTF_noIGobs_rew_st \
 robot.motion.motion_file="humanoidverse/data/motions/g1_43dof/motion_largebox_0d12_5x5_dr_v3.pkl" \
 rewards.reward_penalty_curriculum=True \
 rewards.adaptive_tracking_sigma.enable=True \

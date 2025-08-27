@@ -156,6 +156,6 @@ obs:
     - local_ref_rigid_body_pos: ${eval:'3 * ${robot.num_bodies} + 3*3'}
     - ref_motion_phase: ${robot.motion_num}
     - tracking_error: 5
-    - reward: 19
+    - reward: 19 #19
 
   post_compute_config: {} # Will store values after preprocessing, don't put anything here

@@ -8,8 +8,8 @@ from humanoidverse.agents.meta_agent.replay_memory import ParallelReplayBuffer
 import numpy as np
 
 class HighSAC(object):
-    def __init__(self, device, num_envs):
-        num_inputs = 192
+    def __init__(self, device, num_envs, sac_dict):
+        num_inputs = sac_dict["sac_obs"]
         self.gamma = 0.99
         self.tau = 0.005
         self.action_range = [-1., 1.]
@@ -18,7 +18,7 @@ class HighSAC(object):
         self.automatic_entropy_tuning = True
         self.hidden_size = 256
         self.device = device
-        self.action_nums = 19
+        self.action_nums = sac_dict["action_space"]
         self.lr = 3e-4
         self.init_temperature = 0.1
         self.critic = QNetwork(num_inputs, self.action_nums, self.hidden_size).to(device=self.device)
