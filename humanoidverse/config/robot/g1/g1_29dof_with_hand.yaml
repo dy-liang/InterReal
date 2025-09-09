@@ -264,7 +264,7 @@ robot:
       assetRoot: "humanoidverse/data/robots/g1/"
       # assetFileName: "g1_29dof_anneal_23dof.xml"
       assetFileName: "g1_29dof_with_hand.xml"
-      assetFileName_43dof: "g1_29dof_with_hand.xml"
+      #assetFileName_43dof: "g1_29dof_with_hand.xml"
       urdfFileName: "g1_29dof_with_hand.urdf"
 
     humanoid_type: g1_29dof_with_hand

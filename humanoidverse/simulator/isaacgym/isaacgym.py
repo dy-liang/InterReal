@@ -26,7 +26,7 @@ class IsaacGym(BaseSimulator):
         self.object_density = 25.
         self.object_mass = 1.5
         data = joblib.load(config.robot.motion.motion_file)
-        if "aug" in list(data.keys())[1]:
+        if "aug" in list(data.keys())[0] or "mocap" in list(data.keys())[0]:
             self.object_name = list(["largebox"]*len(data.keys())) #list(data.keys())
             motion_id_name = list([f"{i}" for i in range(len(data.keys()))])
             self.object_id = to_torch([0]*len(data.keys()), dtype=torch.long).cuda()

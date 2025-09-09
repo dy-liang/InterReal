@@ -3,11 +3,11 @@ import numpy as np
 import pickle
 import  joblib
 #file="/home/dmu00/LDY/ASAP-main/humanoidverse/data/motions/g1_29dof_anneal_23dof/TairanTestbed/singles/0-TairanTestbed_TairanTestbed_CR7_video_CR7_level1_filter_amass.pkl"
-file="/home/dmu00/LDY/Tele2025/HOI_ASAP/humanoidverse/data/motions/g1_43dof/250520_HOIs_43dof.pkl"
+file="/gemini/code/HOI_ASAP/humanoidverse/data/motions/g1_23dof/mocap_largebox_028_ig_yh.pkl"
 data = joblib.load(file)
 #print(data)
 print(data.keys()) 
-data1 = data["largebox"] 
+data1 = data["mocap_largebox_028"] 
 print(data1.keys()) 
 print(data1["obj_state"][32,0:3])
 print("left dof pos: ", data1["dof"][1,[19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]],"left dof pos: ", data1["dof"][1,29:36])    #(119, 3)    0.8272517

@@ -44,7 +44,7 @@ class Humanoid_Batch:
     def __init__(self, cfg, device = torch.device("cpu")):
         self.cfg = cfg
         self.asset_root = Path(cfg.asset.assetRoot)
-        self.asset_file = cfg.asset.assetFileName_43dof
+        self.asset_file = cfg.asset.assetFileName
         self.mjcf_file = self.asset_root / self.asset_file
         
         parser = XMLParser(remove_blank_text=True)

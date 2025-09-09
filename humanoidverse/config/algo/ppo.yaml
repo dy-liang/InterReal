@@ -31,6 +31,9 @@ algo:
     init_at_random_ep_len: True
     eval_callbacks: null
 
+    c5: 5000
+    theta_init: 0.1
+
     module_dict:
       actor: 
         input_dim: [actor_obs]

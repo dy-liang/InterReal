@@ -215,6 +215,8 @@ class MotionLibHoi(MotionLibRobot):
             obj_rot = obj_state[...,None, 3:7]
             linear_vel = obj_state[...,None, 7:10]
             global_angular_vel = obj_state[...,None, 10:13]  # TODO None for table
+            #body_contact = to_torch(curr_file['contact']).clone()[start:end]              # yh_23dof motion
+            #obj_contact = to_torch(curr_file['contact']).clone()[start:end].unsqueeze(1)
             body_contact = to_torch(curr_file['body_contact']).clone()[start:end]
             obj_contact = to_torch(curr_file['obj_contact']).clone()[start:end].unsqueeze(1)
             ig = to_torch(curr_file['ig']).clone()[start:end].unsqueeze(1)
